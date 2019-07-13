@@ -1,7 +1,12 @@
 [package]
 name = "panamax"
 version = "0.1.0"
-authors = ["k3d3"]
+authors = ["k3d3 <k@3d3.ca>"]
+description = "Mirror rustup and crates.io repositories, for offline or airgapped Rust and cargo usage."
+license = "MIT/Apache-2.0"
+readme = "README.md"
+homepage = "https://github.com/k3d3/panamax"
+repository = "https://github.com/k3d3/panamax"
 edition = "2018"
 
 [dependencies]
