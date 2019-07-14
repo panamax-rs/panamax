@@ -1,7 +1,12 @@
 use std::path::PathBuf;
 use structopt::StructOpt;
 
+#[macro_use]
+extern crate quick_error;
+
 mod mirror;
+mod rustup;
+mod crates;
 
 /// Mirror rustup and crates.io repositories, for offline Rust and cargo usage.
 #[derive(Debug, StructOpt)]
