@@ -1,32 +1,33 @@
 use std::path::PathBuf;
 use structopt::StructOpt;
 
+mod mirror;
+
 /// Mirror rustup and crates.io repositories, for offline Rust and cargo usage.
 #[derive(Debug, StructOpt)]
-#[structopt(name = "panamax")]
-struct Opt {
-    /// Output directory
-    #[structopt(parse(from_os_str))]
-    out: PathBuf,
+enum Panamax {
+    /// Create a new mirror directory.
+    #[structopt(name = "init", alias = "new")]
+    Init {
+        /// Directory to store the mirror.
+        #[structopt(parse(from_os_str))]
+        path: PathBuf,
+    },
 
-    /// Only mirror the rustup files
-    #[structopt(short, long = "rustup")]
-    rustup_only: bool,
-
-    /// Only mirror crates.io
-    #[structopt(short, long = "crates")]
-    crates_only: bool,
-
-    /// Number of threads to download with
-    #[structopt(short, long = "threads")]
-    threads: Option<usize>,
-
-    /// Rewrite the download URL in crates.io-index (should point to the /crates directory)
-    #[structopt(short = "u", long = "url")]
-    rewrite_url: Option<String>,
+    /// Update an existing mirror directory.
+    #[structopt(name = "sync", alias = "run")]
+    Sync {
+        /// Mirror directory.
+        #[structopt(parse(from_os_str))]
+        path: PathBuf,
+    },
 }
 
 fn main() {
-    let opt = Opt::from_args();
-    dbg!(opt);
+    let opt = Panamax::from_args();
+    match opt {
+        Panamax::Init { path } => mirror::init(&path),
+        Panamax::Sync { path } => mirror::sync(&path),
+    }
+    .unwrap();
 }
