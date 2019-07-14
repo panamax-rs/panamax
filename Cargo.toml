@@ -18,3 +18,7 @@ serde_derive = "1.0.94"
 serde = "1.0.94"
 quick-error = { package = "quick-error2", version = "2.0.1" }
 console = "0.7.7"
+scoped_threadpool = "0.1.9"
+log = "0.4.7"
+env_logger = "0.6.2"
+sha2 = "0.8.0"

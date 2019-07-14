@@ -63,7 +63,7 @@ pub fn create_mirror_toml(path: &Path) -> Result<bool, io::Error> {
     let mirror = Mirror {
         mirror: MirrorSection {
             download_threads: 4,
-            base_url: Some("http://panamax.internal/".to_string()),
+            base_url: Some("http://panamax.internal".to_string()),
         },
         rustup: Some(RustupSection {
             sync: true,
@@ -114,7 +114,7 @@ pub fn sync(path: &Path) -> Result<(), MirrorError>{
 
     if let Some(rustup) = mirror.rustup {
         if rustup.sync {
-            crate::rustup::sync(&mirror.mirror, &rustup);
+            crate::rustup::sync(path, &mirror.mirror, &rustup);
         } else {
             eprintln!("Rustup sync is disabled, skipping...");
         }
@@ -124,7 +124,7 @@ pub fn sync(path: &Path) -> Result<(), MirrorError>{
 
     if let Some(crates) = mirror.crates {
         if crates.sync {
-            crate::crates::sync(&mirror.mirror, &crates);
+            crate::crates::sync(path,&mirror.mirror, &crates);
         } else {
             eprintln!("Crates sync is disabled, skipping...");
         }

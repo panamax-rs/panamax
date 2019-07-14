@@ -1,7 +1,8 @@
-use crate::mirror::{MirrorSection, CratesSection};
+use crate::mirror::{MirrorSection, CratesSection, MirrorError};
 use console::style;
+use std::path::Path;
 
-pub fn sync(mirror: &MirrorSection, crates: &CratesSection) {
+pub fn sync(path: &Path, mirror: &MirrorSection, crates: &CratesSection) -> Result<(), MirrorError> {
     eprintln!("{}", style("Syncing Crates repositories...").bold());
 
     eprintln!("{} Syncing crates.io-index repository...", style("[1/3]").bold());
@@ -15,4 +16,6 @@ pub fn sync(mirror: &MirrorSection, crates: &CratesSection) {
     }
 
     eprintln!("{}", style("Syncing Crates repositories complete!").bold());
+
+    Ok(())
 }

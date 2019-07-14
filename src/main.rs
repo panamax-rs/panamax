@@ -29,6 +29,7 @@ enum Panamax {
 }
 
 fn main() {
+    env_logger::init();
     let opt = Panamax::from_args();
     match opt {
         Panamax::Init { path } => mirror::init(&path),
