@@ -227,7 +227,6 @@ pub fn sync_rustup_init(path: &Path, source: &str, threads: usize) -> Result<(),
         for _ in 0..count {
             receiver.recv().unwrap();
             pb.inc(1);
-            thread::sleep(Duration::from_millis(100));
         }
         pb.finish();
     });
@@ -353,7 +352,6 @@ pub fn sync_rustup_channel(
         for _ in 0..count {
             receiver.recv().unwrap();
             pb.inc(1);
-            thread::sleep(Duration::from_millis(100));
         }
         pb.finish();
     });
