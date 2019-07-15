@@ -2,14 +2,19 @@
 
 use crate::mirror::{MirrorError, MirrorSection, RustupSection};
 use console::style;
+use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use log::debug;
 use scoped_threadpool::Pool;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs::{create_dir_all, File};
-use std::path::Path;
-use std::{fs, io};
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::{channel, Sender};
+use std::sync::{mpsc, Arc};
+use std::time::Duration;
+use std::{fs, io, thread, mem};
+use std::io::{Write, Read, ErrorKind};
 
 /// Non-windows platforms
 static PLATFORMS: &'static [&'static str] = &[
@@ -84,11 +89,7 @@ pub fn create_file_create_dir(path: &Path) -> Result<File, io::Error> {
 /// Download a file to a path, creating directories if needed.
 pub fn download_and_create_dir(from: &str, to: &Path) -> Result<(), io::Error> {
     // TODO: Error handling
-    debug!(
-        "Downloading {} to {}",
-        from,
-        to.display()
-    );
+    //debug!("Downloading {} to {}", from, to.display());
     let mut http_res = reqwest::get(from).unwrap();
 
     let mut f = create_file_create_dir(to)?;
@@ -98,22 +99,43 @@ pub fn download_and_create_dir(from: &str, to: &Path) -> Result<(), io::Error> {
     Ok(())
 }
 
+/// Clone of the io::copy code, but with the buffer size changed to 64k
+pub fn fast_copy<R: ?Sized, W: ?Sized>(reader: &mut R, writer: &mut W) -> io::Result<u64>
+    where R: Read, W: Write
+{
+    let mut buf: [u8; 65536] = [0; 65536];
+
+    let mut written = 0;
+    loop {
+        let len = match reader.read(&mut buf) {
+            Ok(0) => return Ok(written),
+            Ok(len) => len,
+            Err(ref e) if e.kind() == ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        writer.write_all(&buf[..len])?;
+        written += len as u64;
+    }
+}
+
 /// Get the (lowercase hex) sha256 hash of a file.
 pub fn file_sha256(path: &Path) -> Result<String, io::Error> {
+    //dbg!("file_sha256");
     let mut file = File::open(path)?;
     let mut sha256 = Sha256::new();
-    io::copy(&mut file, &mut sha256)?;
+    fast_copy(&mut file, &mut sha256)?;
+    //dbg!("file_sha256 done");
     Ok(format!("{:x}", sha256.result()))
 }
 
 /// If a file doesn't match a provided sha256, download a url to a path.
 pub fn download_with_sha256_str_verify(url: &str, path: &Path, remote_sha256: &str) {
     // TODO: Error handling
-    debug!(
+    /*debug!(
         "Verifying sha256 by string and downloading {} to {}",
         url,
         path.display()
-    );
+    );*/
 
     let do_download = if let Ok(local_file_sha256) = file_sha256(path) {
         remote_sha256 != local_file_sha256
@@ -129,17 +151,17 @@ pub fn download_with_sha256_str_verify(url: &str, path: &Path, remote_sha256: &s
 /// If an accompanying .sha256 file doesn't match or exist, download a url to a path.
 pub fn download_with_sha256_verify(url: &str, path: &Path) {
     // TODO: Error handling
-    debug!(
+    /*debug!(
         "Verifying sha256 and downloading {} to {}",
         url,
         path.display()
-    );
+    );*/
     let sha256_url = format!("{}.sha256", url);
-    let sha256_path = path.with_file_name({
-        let mut filename = path.file_name().unwrap().to_os_string();
-        filename.push(".sha256");
-        filename
-    });
+    let sha256_path = {
+        let mut new_path = path.as_os_str().to_os_string();
+        new_path.push(".sha256");
+        PathBuf::from(new_path)
+    };
 
     let remote_sha256 = download_string(&sha256_url);
 
@@ -184,23 +206,50 @@ pub fn sync_one_init(path: &Path, source: &str, platform: &str, is_exe: bool) {
 
 /// Synchronize all rustup-init files.
 pub fn sync_rustup_init(path: &Path, source: &str, threads: usize) -> Result<(), MirrorError> {
-    // TODO: use this for building a progress bar
     let count = PLATFORMS.len() + PLATFORMS_EXE.len();
 
     let mut pool = Pool::new(threads as u32);
+
+    let (sender, receiver) = mpsc::channel();
+    let pb_thread = thread::spawn(move || {
+        let pb = ProgressBar::new(count as u64);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("{prefix} {wide_bar} {pos}/{len} [{elapsed_precise}]")
+                .progress_chars("█▉▊▋▌▍▎▏  "),
+        );
+        pb.set_prefix(&format!(
+            "{} Syncing rustup-init files...",
+            style("[1/4]").bold()
+        ));
+        pb.tick();
+        for _ in 0..count {
+            receiver.recv().unwrap();
+            pb.inc(1);
+            thread::sleep(Duration::from_millis(100));
+        }
+        pb.finish();
+    });
+
     pool.scoped(|scoped| {
         for platform in PLATFORMS {
+            let s = sender.clone();
             scoped.execute(move || {
                 sync_one_init(path, source, platform, false);
+                s.send(());
             })
         }
 
         for platform in PLATFORMS_EXE {
+            let s = sender.clone();
             scoped.execute(move || {
                 sync_one_init(path, source, platform, true);
+                s.send(());
             })
         }
     });
+
+    pb_thread.join().unwrap();
 
     Ok(())
 }
@@ -241,13 +290,22 @@ pub fn rustup_download_list(path: &Path) -> Vec<(String, String)> {
     let channel_str = fs::read_to_string(path).unwrap();
     let channel: Channel = toml::from_str(&channel_str).unwrap();
 
-    channel.pkg.into_iter().flat_map(|(_, pkg)| {
-        pkg.target.into_iter().flat_map(|(_, target)| -> Vec<(String, String)> {
-            target.target_urls.map(|urls| {
-                vec![(urls.url, urls.hash), (urls.xz_url, urls.xz_hash)]
-            }).into_iter().flatten().collect()
+    channel
+        .pkg
+        .into_iter()
+        .flat_map(|(_, pkg)| {
+            pkg.target
+                .into_iter()
+                .flat_map(|(_, target)| -> Vec<(String, String)> {
+                    target
+                        .target_urls
+                        .map(|urls| vec![(urls.url, urls.hash), (urls.xz_url, urls.xz_hash)])
+                        .into_iter()
+                        .flatten()
+                        .collect()
+                })
         })
-    }).collect()
+        .collect()
 }
 
 pub fn sync_one_rustup_target(path: &Path, source: &str, url: &str, hash: &str) {
@@ -256,9 +314,13 @@ pub fn sync_one_rustup_target(path: &Path, source: &str, url: &str, hash: &str) 
 }
 
 /// Synchronize a rustup channel (stable, beta, or nightly).
-pub fn sync_rustup_channel(path: &Path, source: &str, threads: usize, channel: &str) {
-    dbg!(channel);
-
+pub fn sync_rustup_channel(
+    path: &Path,
+    source: &str,
+    threads: usize,
+    prefix: String,
+    channel: &str,
+) {
     // Download channel file
     let channel_url = format!("{}/dist/channel-rust-{}.toml", source, channel);
     let channel_path = path.join(format!("dist/channel-rust-{}.toml", channel));
@@ -271,17 +333,40 @@ pub fn sync_rustup_channel(path: &Path, source: &str, threads: usize, channel: &
 
     // Open toml file, find all files to download
     let downloads = rustup_download_list(&channel_path);
-    dbg!(downloads.len());
 
     // Download files
     let mut pool = Pool::new(threads as u32);
+
+    let (sender, receiver) = mpsc::channel();
+    let count = downloads.len();
+    let pb_thread = thread::spawn(move || {
+        let pb = ProgressBar::new(count as u64);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("{prefix} {wide_bar} {pos}/{len} [{elapsed_precise}]")
+                .progress_chars("█▉▊▋▌▍▎▏  "),
+        );
+        pb.set_prefix(&prefix);
+        pb.tick();
+        for _ in 0..count {
+            receiver.recv().unwrap();
+            pb.inc(1);
+            thread::sleep(Duration::from_millis(100));
+        }
+        pb.finish();
+    });
+
     pool.scoped(|scoped| {
         for (url, hash) in &downloads {
+            let s = sender.clone();
             scoped.execute(move || {
                 sync_one_rustup_target(&path, &source, &url, &hash);
+                s.send(());
             })
         }
     });
+
+    pb_thread.join();
 }
 
 /// Synchronize rustup.
@@ -293,27 +378,45 @@ pub fn sync(
     eprintln!("{}", style("Syncing Rustup repositories...").bold());
 
     // Mirror rustup-init
-    eprintln!("{} Syncing rustup-init files...", style("[1/4]").bold());
-    // sync_rustup_init(path, &rustup.source, mirror.download_threads)?; // TODO: not comment this out
+    //eprintln!("{} Syncing rustup-init files...", style("[1/4]").bold());
+    sync_rustup_init(path, &rustup.source, mirror.download_threads)?;
 
     // Mirror stable
     if rustup.keep_latest_stables != Some(0) {
-        eprintln!("{} Syncing latest stable...", style("[2/4]").bold());
-        sync_rustup_channel(path, &rustup.source, mirror.download_threads, "stable");
+        let prefix = format!("{} Syncing latest stable...    ", style("[2/4]").bold());
+        sync_rustup_channel(
+            path,
+            &rustup.source,
+            mirror.download_threads,
+            prefix,
+            "stable",
+        );
         // Clean old stables
     }
 
     // Mirror beta
     if rustup.keep_latest_betas != Some(0) {
-        eprintln!("{} Syncing latest beta...", style("[3/4]").bold());
-        //sync_rustup_channel(path, &rustup.source, "beta");
+        let prefix = format!("{} Syncing latest beta...      ", style("[3/4]").bold());
+        sync_rustup_channel(
+            path,
+            &rustup.source,
+            mirror.download_threads,
+            prefix,
+            "beta",
+        );
         // Clean old betas
     }
 
     // Mirror nightly
     if rustup.keep_latest_nightlies != Some(0) {
-        eprintln!("{} Syncing latest nightly...", style("[4/4]").bold());
-        //sync_rustup_channel(path, &rustup.source, "nightly");
+        let prefix = format!("{} Syncing latest nightly...   ", style("[4/4]").bold());
+        sync_rustup_channel(
+            path,
+            &rustup.source,
+            mirror.download_threads,
+            prefix,
+            "nightly",
+        );
         // Clean old nightlies
     }
 
@@ -321,4 +424,3 @@ pub fn sync(
 
     Ok(())
 }
-
