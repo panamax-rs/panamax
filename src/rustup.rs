@@ -222,6 +222,7 @@ pub fn sync_rustup_init(path: &Path, source: &str, threads: usize) -> Result<(),
             "{} Syncing rustup-init files...",
             style("[1/4]").bold()
         ));
+        pb.enable_steady_tick(500);
         pb.tick();
         for _ in 0..count {
             receiver.recv().unwrap();
@@ -347,6 +348,7 @@ pub fn sync_rustup_channel(
                 .progress_chars("█▉▊▋▌▍▎▏  "),
         );
         pb.set_prefix(&prefix);
+        pb.enable_steady_tick(500);
         pb.tick();
         for _ in 0..count {
             receiver.recv().unwrap();
