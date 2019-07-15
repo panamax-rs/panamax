@@ -1,14 +1,17 @@
 // Note: These platforms should match https://github.com/rust-lang/rustup.rs#other-installation-methods
 
-use crate::mirror::{MirrorSection, RustupSection, MirrorError};
+use crate::mirror::{MirrorError, MirrorSection, RustupSection};
 use console::style;
-use std::path::Path;
-use scoped_threadpool::Pool;
 use log::debug;
+use scoped_threadpool::Pool;
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
+use std::fs::{create_dir_all, File};
+use std::path::Path;
 use std::{fs, io};
-use sha2::{Sha256, Digest};
-use std::fs::{File, create_dir_all};
 
+/// Non-windows platforms
 static PLATFORMS: &'static [&'static str] = &[
     "aarch64-linux-android",
     "aarch64-unknown-linux-gnu",
@@ -36,6 +39,7 @@ static PLATFORMS: &'static [&'static str] = &[
     "x86_64-unknown-netbsd",
 ];
 
+/// Windows platforms (platforms where rustup-init has a .exe extension)
 static PLATFORMS_EXE: &'static [&'static str] = &[
     "i686-pc-windows-gnu",
     "i686-pc-windows-msvc",
@@ -43,11 +47,13 @@ static PLATFORMS_EXE: &'static [&'static str] = &[
     "x86_64-pc-windows-msvc",
 ];
 
+/// Download a URL and return it as a string.
 pub fn download_string(from: &str) -> String {
     // TODO: Error handling
     reqwest::get(from).unwrap().text().unwrap()
 }
 
+/// Write a string to a file, creating directories if needed.
 pub fn write_file_create_dir(path: &Path, contents: &str) -> Result<(), io::Error> {
     // TODO: Error handling
     let mut res = fs::write(path, contents);
@@ -62,6 +68,7 @@ pub fn write_file_create_dir(path: &Path, contents: &str) -> Result<(), io::Erro
     res
 }
 
+/// Create a file, creating directories if needed.
 pub fn create_file_create_dir(path: &Path) -> Result<File, io::Error> {
     let mut file_res = File::create(path);
     if let Err(e) = &file_res {
@@ -74,8 +81,14 @@ pub fn create_file_create_dir(path: &Path) -> Result<File, io::Error> {
     file_res
 }
 
+/// Download a file to a path, creating directories if needed.
 pub fn download_and_create_dir(from: &str, to: &Path) -> Result<(), io::Error> {
     // TODO: Error handling
+    debug!(
+        "Downloading {} to {}",
+        from,
+        to.display()
+    );
     let mut http_res = reqwest::get(from).unwrap();
 
     let mut f = create_file_create_dir(to)?;
@@ -85,6 +98,7 @@ pub fn download_and_create_dir(from: &str, to: &Path) -> Result<(), io::Error> {
     Ok(())
 }
 
+/// Get the (lowercase hex) sha256 hash of a file.
 pub fn file_sha256(path: &Path) -> Result<String, io::Error> {
     let mut file = File::open(path)?;
     let mut sha256 = Sha256::new();
@@ -92,50 +106,88 @@ pub fn file_sha256(path: &Path) -> Result<String, io::Error> {
     Ok(format!("{:x}", sha256.result()))
 }
 
+/// If a file doesn't match a provided sha256, download a url to a path.
+pub fn download_with_sha256_str_verify(url: &str, path: &Path, remote_sha256: &str) {
+    // TODO: Error handling
+    debug!(
+        "Verifying sha256 by string and downloading {} to {}",
+        url,
+        path.display()
+    );
+
+    let do_download = if let Ok(local_file_sha256) = file_sha256(path) {
+        remote_sha256 != local_file_sha256
+    } else {
+        true
+    };
+
+    if do_download {
+        download_and_create_dir(url, path);
+    }
+}
+
+/// If an accompanying .sha256 file doesn't match or exist, download a url to a path.
+pub fn download_with_sha256_verify(url: &str, path: &Path) {
+    // TODO: Error handling
+    debug!(
+        "Verifying sha256 and downloading {} to {}",
+        url,
+        path.display()
+    );
+    let sha256_url = format!("{}.sha256", url);
+    let sha256_path = path.with_file_name({
+        let mut filename = path.file_name().unwrap().to_os_string();
+        filename.push(".sha256");
+        filename
+    });
+
+    let remote_sha256 = download_string(&sha256_url);
+
+    let do_download = if let Ok(local_sha256) = fs::read_to_string(&sha256_path) {
+        if local_sha256 == remote_sha256 {
+            if let Ok(local_file_sha256) = file_sha256(&path) {
+                remote_sha256[..local_file_sha256.len()] != local_file_sha256 // Download if sha256 doesn't match
+            } else {
+                true // Local file doesn't exist or couldn't be read, so try to download
+            }
+        } else {
+            true // Local sha256 file doesn't match, so download
+        }
+    } else {
+        true // Local sha256 file not found, so download
+    };
+
+    if do_download {
+        write_file_create_dir(&sha256_path, &remote_sha256);
+        download_and_create_dir(url, path);
+    }
+}
+
+/// Synchronize one rustup-init file.
 pub fn sync_one_init(path: &Path, source: &str, platform: &str, is_exe: bool) {
     let local_path = if is_exe {
-        path.join("rustup/dist").join(platform).join("rustup-init.exe")
+        path.join("rustup/dist")
+            .join(platform)
+            .join("rustup-init.exe")
     } else {
         path.join("rustup/dist").join(platform).join("rustup-init")
     };
-    let local_sha256_path = local_path.with_extension("sha256");
 
     let source_url = if is_exe {
         format!("{}/rustup/dist/{}/rustup-init.exe", source, platform)
     } else {
         format!("{}/rustup/dist/{}/rustup-init", source, platform)
     };
-    let source_sha256_url = format!("{}.sha256", source_url);
 
-    debug!("Checking hash for platform {}", platform);
-    let source_sha256 = download_string(&source_sha256_url);
-
-    let do_download = if let Ok(local_sha256) = fs::read_to_string(&local_sha256_path) {
-        if local_sha256 == source_sha256 {
-            if let Ok(local_file_sha256) = file_sha256(&local_path) {
-                //dbg!(&local_file_sha256, &local_sha256, &source_sha256);
-                source_sha256[..local_file_sha256.len()] != local_file_sha256 // Download if sha256 doesn't match
-            } else {
-                true // Local file doesn't exist or couldn't be read, so try to download
-            }
-        } else {
-           true // Local sha256 file doesn't match, so download
-        }
-    } else {
-        true // Local sha256 file not found, so download
-    };
-    
-    if do_download {
-        debug!("Downloading rustup-init file for {} from {} to {}", platform, &source_url, &local_path.display());
-        download_and_create_dir(&source_url, &local_path);
-        write_file_create_dir(&local_sha256_path, &source_sha256);
-    }
-
+    download_with_sha256_verify(&source_url, &local_path);
 }
 
+/// Synchronize all rustup-init files.
 pub fn sync_rustup_init(path: &Path, source: &str, threads: usize) -> Result<(), MirrorError> {
-    let mut pool = Pool::new(threads as u32);
+    // TODO: use this for building a progress bar
+    let count = PLATFORMS.len() + PLATFORMS_EXE.len();
 
+    let mut pool = Pool::new(threads as u32);
     pool.scoped(|scoped| {
         for platform in PLATFORMS {
             scoped.execute(move || {
@@ -153,28 +205,115 @@ pub fn sync_rustup_init(path: &Path, source: &str, threads: usize) -> Result<(),
     Ok(())
 }
 
-pub fn sync(path: &Path, mirror: &MirrorSection, rustup: &RustupSection) -> Result<(), MirrorError> {
+#[derive(Deserialize, Debug)]
+struct TargetUrls {
+    url: String,
+    hash: String,
+    xz_url: String,
+    xz_hash: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct Target {
+    available: bool,
+
+    #[serde(flatten)]
+    target_urls: Option<TargetUrls>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Pkg {
+    version: String,
+    target: HashMap<String, Target>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Channel {
+    #[serde(alias = "manifest-version")]
+    manifest_version: String,
+    date: String,
+    pkg: HashMap<String, Pkg>,
+}
+
+/// Get the rustup file downloads, in pairs of URLs and sha256 hashes.
+pub fn rustup_download_list(path: &Path) -> Vec<(String, String)> {
+    // TODO: Error handling
+    let channel_str = fs::read_to_string(path).unwrap();
+    let channel: Channel = toml::from_str(&channel_str).unwrap();
+
+    channel.pkg.into_iter().flat_map(|(_, pkg)| {
+        pkg.target.into_iter().flat_map(|(_, target)| -> Vec<(String, String)> {
+            target.target_urls.map(|urls| {
+                vec![(urls.url, urls.hash), (urls.xz_url, urls.xz_hash)]
+            }).into_iter().flatten().collect()
+        })
+    }).collect()
+}
+
+pub fn sync_one_rustup_target(path: &Path, source: &str, url: &str, hash: &str) {
+    let target_path = path.join(url[source.len()..].trim_start_matches("/"));
+    download_with_sha256_str_verify(url, &target_path, hash);
+}
+
+/// Synchronize a rustup channel (stable, beta, or nightly).
+pub fn sync_rustup_channel(path: &Path, source: &str, threads: usize, channel: &str) {
+    dbg!(channel);
+
+    // Download channel file
+    let channel_url = format!("{}/dist/channel-rust-{}.toml", source, channel);
+    let channel_path = path.join(format!("dist/channel-rust-{}.toml", channel));
+    download_with_sha256_verify(&channel_url, &channel_path);
+
+    // Download release file
+    let release_url = format!("{}/rustup/release-{}.toml", source, channel);
+    let release_path = path.join(format!("rustup/release-{}.toml", channel));
+    download_and_create_dir(&release_url, &release_path);
+
+    // Open toml file, find all files to download
+    let downloads = rustup_download_list(&channel_path);
+    dbg!(downloads.len());
+
+    // Download files
+    let mut pool = Pool::new(threads as u32);
+    pool.scoped(|scoped| {
+        for (url, hash) in &downloads {
+            scoped.execute(move || {
+                sync_one_rustup_target(&path, &source, &url, &hash);
+            })
+        }
+    });
+}
+
+/// Synchronize rustup.
+pub fn sync(
+    path: &Path,
+    mirror: &MirrorSection,
+    rustup: &RustupSection,
+) -> Result<(), MirrorError> {
     eprintln!("{}", style("Syncing Rustup repositories...").bold());
 
     // Mirror rustup-init
     eprintln!("{} Syncing rustup-init files...", style("[1/4]").bold());
-    sync_rustup_init(path, &rustup.source, mirror.download_threads)?;
+    // sync_rustup_init(path, &rustup.source, mirror.download_threads)?; // TODO: not comment this out
 
     // Mirror stable
     if rustup.keep_latest_stables != Some(0) {
         eprintln!("{} Syncing latest stable...", style("[2/4]").bold());
+        sync_rustup_channel(path, &rustup.source, mirror.download_threads, "stable");
         // Clean old stables
     }
 
     // Mirror beta
     if rustup.keep_latest_betas != Some(0) {
         eprintln!("{} Syncing latest beta...", style("[3/4]").bold());
+        //sync_rustup_channel(path, &rustup.source, "beta");
         // Clean old betas
     }
 
     // Mirror nightly
     if rustup.keep_latest_nightlies != Some(0) {
         eprintln!("{} Syncing latest nightly...", style("[4/4]").bold());
+        //sync_rustup_channel(path, &rustup.source, "nightly");
         // Clean old nightlies
     }
 
@@ -182,3 +321,4 @@ pub fn sync(path: &Path, mirror: &MirrorSection, rustup: &RustupSection) -> Resu
 
     Ok(())
 }
+
