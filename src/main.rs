@@ -5,8 +5,10 @@ use structopt::StructOpt;
 extern crate quick_error;
 
 mod mirror;
+mod download;
+mod progress_bar;
 mod rustup;
-mod crates;
+//mod crates;
 
 /// Mirror rustup and crates.io repositories, for offline Rust and cargo usage.
 #[derive(Debug, StructOpt)]

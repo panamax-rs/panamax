@@ -114,7 +114,7 @@ pub fn sync(path: &Path) -> Result<(), MirrorError>{
 
     if let Some(rustup) = mirror.rustup {
         if rustup.sync {
-            crate::rustup::sync(path, &mirror.mirror, &rustup);
+            crate::rustup::sync(path, &mirror.mirror, &rustup).unwrap();
         } else {
             eprintln!("Rustup sync is disabled, skipping...");
         }
@@ -124,13 +124,15 @@ pub fn sync(path: &Path) -> Result<(), MirrorError>{
 
     if let Some(crates) = mirror.crates {
         if crates.sync {
-            crate::crates::sync(path,&mirror.mirror, &crates);
+            //crate::crates::sync(path,&mirror.mirror, &crates).unwrap();
         } else {
             eprintln!("Crates sync is disabled, skipping...");
         }
     } else {
         eprintln!("Crates section missing, skipping...");
     }
+
+    eprintln!("Sync complete.");
 
     Ok(())
 }
