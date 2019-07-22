@@ -1,14 +1,18 @@
-// Note: These platforms should match https://github.com/rust-lang/rustup.rs#other-installation-methods
-
+use crate::download::{
+    append_to_path, download, download_with_sha256_file, move_if_exists,
+    move_if_exists_with_sha256, DownloadError,
+};
 use crate::mirror::{MirrorError, MirrorSection, RustupSection};
+use crate::progress_bar::{progress_bar, ProgressBarMessage};
 use console::style;
 use scoped_threadpool::Pool;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{fs, io};
-use crate::progress_bar::{progress_bar, ProgressBarMessage};
-use crate::download::{download_with_sha256_verify, download_with_sha256_str_verify, download_and_create_dir};
+
+// Note: These platforms should match https://github.com/rust-lang/rustup.rs#other-installation-methods
 
 /// Non-windows platforms
 static PLATFORMS: &'static [&'static str] = &[
@@ -46,8 +50,30 @@ static PLATFORMS_EXE: &'static [&'static str] = &[
     "x86_64-pc-windows-msvc",
 ];
 
+quick_error! {
+    #[derive(Debug)]
+    pub enum SyncError {
+        Io(err: io::Error) {
+            from()
+        }
+        Download(err: DownloadError) {
+            from()
+        }
+        Parse(err: toml::de::Error) {
+            from()
+        }
+        FailedDownloads(count: usize) {}
+    }
+}
+
 /// Synchronize one rustup-init file.
-pub fn sync_one_init(path: &Path, source: &str, platform: &str, is_exe: bool) {
+pub fn sync_one_init(
+    path: &Path,
+    source: &str,
+    platform: &str,
+    is_exe: bool,
+    retries: usize,
+) -> Result<(), DownloadError> {
     let local_path = if is_exe {
         path.join("rustup/dist")
             .join(platform)
@@ -62,37 +88,70 @@ pub fn sync_one_init(path: &Path, source: &str, platform: &str, is_exe: bool) {
         format!("{}/rustup/dist/{}/rustup-init", source, platform)
     };
 
-    // TODO: error handling
-    download_with_sha256_verify(&source_url, &local_path).unwrap();
+    download_with_sha256_file(&source_url, &local_path, retries, false)?;
+
+    Ok(())
 }
 
 /// Synchronize all rustup-init files.
-pub fn sync_rustup_init(path: &Path, source: &str, prefix: String, threads: usize) -> Result<(), MirrorError> {
+pub fn sync_rustup_init(
+    path: &Path,
+    source: &str,
+    prefix: String,
+    threads: usize,
+    retries: usize,
+) -> Result<(), SyncError> {
     let count = PLATFORMS.len() + PLATFORMS_EXE.len();
 
     let (pb_thread, sender) = progress_bar(count, prefix);
 
+    let errors_occurred = AtomicUsize::new(0);
+
     Pool::new(threads as u32).scoped(|scoped| {
+        let error_occurred = &errors_occurred;
         for platform in PLATFORMS {
             let s = sender.clone();
             scoped.execute(move || {
-                sync_one_init(path, source, platform, false);
-                s.send(ProgressBarMessage::Increment).unwrap();
+                if let Err(e) = sync_one_init(path, source, platform, false, retries) {
+                    s.send(ProgressBarMessage::Println(format!(
+                        "Downloading {} failed: {:?}",
+                        path.display(),
+                        e
+                    )))
+                    .expect("Channel send should not fail");
+                    error_occurred.fetch_add(1, Ordering::Release);
+                }
+                s.send(ProgressBarMessage::Increment)
+                    .expect("Channel send should not fail");
             })
         }
 
         for platform in PLATFORMS_EXE {
             let s = sender.clone();
             scoped.execute(move || {
-                sync_one_init(path, source, platform, true);
-                s.send(ProgressBarMessage::Increment).unwrap();
+                if let Err(e) = sync_one_init(path, source, platform, true, retries) {
+                    s.send(ProgressBarMessage::Println(format!(
+                        "Downloading {} failed: {:?}",
+                        path.display(),
+                        e
+                    )))
+                    .expect("Channel send should not fail");
+                    error_occurred.fetch_add(1, Ordering::Release);
+                }
+                s.send(ProgressBarMessage::Increment)
+                    .expect("Channel send should not fail");
             })
         }
     });
 
     pb_thread.join().unwrap();
 
-    Ok(())
+    let errors = errors_occurred.load(Ordering::Acquire);
+    if errors == 0 {
+        Ok(())
+    } else {
+        Err(SyncError::FailedDownloads(errors))
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -126,10 +185,9 @@ struct Channel {
 }
 
 /// Get the rustup file downloads, in pairs of URLs and sha256 hashes.
-pub fn rustup_download_list(path: &Path) -> Result<Vec<(String, String)>, io::Error> {
-    // TODO: Error handling
-    let channel_str = fs::read_to_string(path)?;
-    let channel: Channel = toml::from_str(&channel_str).unwrap();
+pub fn rustup_download_list(path: &Path) -> Result<Vec<(String, String)>, SyncError> {
+    let channel_str = fs::read_to_string(path).map_err(|e| DownloadError::Io(e))?;
+    let channel: Channel = toml::from_str(&channel_str)?;
 
     Ok(channel
         .pkg
@@ -149,9 +207,17 @@ pub fn rustup_download_list(path: &Path) -> Result<Vec<(String, String)>, io::Er
         .collect())
 }
 
-pub fn sync_one_rustup_target(path: &Path, source: &str, url: &str, hash: &str) {
+pub fn sync_one_rustup_target(
+    path: &Path,
+    source: &str,
+    url: &str,
+    hash: &str,
+    retries: usize,
+) -> Result<(), DownloadError> {
+    // Chop off the source portion of the URL, to mimic the rest of the path
     let target_path = path.join(url[source.len()..].trim_start_matches("/"));
-    download_with_sha256_str_verify(url, &target_path, hash).unwrap();
+    download(url, &target_path, Some(hash), retries, false)?;
+    Ok(())
 }
 
 /// Synchronize a rustup channel (stable, beta, or nightly).
@@ -161,36 +227,60 @@ pub fn sync_rustup_channel(
     threads: usize,
     prefix: String,
     channel: &str,
-) {
+    retries: usize,
+) -> Result<(), SyncError> {
     // Download channel file
     let channel_url = format!("{}/dist/channel-rust-{}.toml", source, channel);
     let channel_path = path.join(format!("dist/channel-rust-{}.toml", channel));
-    download_with_sha256_verify(&channel_url, &channel_path).unwrap();
+    let channel_part_path = append_to_path(&channel_path, ".part");
+    download_with_sha256_file(&channel_url, &channel_part_path, retries, true)?;
 
     // Download release file
     let release_url = format!("{}/rustup/release-{}.toml", source, channel);
     let release_path = path.join(format!("rustup/release-{}.toml", channel));
-    download_and_create_dir(&release_url, &release_path).unwrap();
+    let release_part_path = append_to_path(&release_path, ".part");
+    download(&release_url, &release_part_path, None, retries, false)?;
 
     // Open toml file, find all files to download
-    let downloads = rustup_download_list(&channel_path).unwrap();
+    let downloads = rustup_download_list(&channel_part_path)?;
 
     // Create progress bar
     let (pb_thread, sender) = progress_bar(downloads.len(), prefix);
 
+    let errors_occurred = AtomicUsize::new(0);
+
     // Download files
     Pool::new(threads as u32).scoped(|scoped| {
+        let error_occurred = &errors_occurred;
         for (url, hash) in &downloads {
             let s = sender.clone();
             scoped.execute(move || {
-                sync_one_rustup_target(&path, &source, &url, &hash);
-                s.send(ProgressBarMessage::Increment).unwrap();
+                if let Err(e) = sync_one_rustup_target(&path, &source, &url, &hash, retries) {
+                    s.send(ProgressBarMessage::Println(format!(
+                        "Downloading {} failed: {:?}",
+                        path.display(),
+                        e
+                    )))
+                    .expect("Channel send should not fail");
+                    error_occurred.fetch_add(1, Ordering::Release);
+                }
+                s.send(ProgressBarMessage::Increment)
+                    .expect("Channel send should not fail");
             })
         }
     });
 
     // Wait for progress bar to finish
     pb_thread.join().unwrap();
+
+    let errors = errors_occurred.load(Ordering::Acquire);
+    if errors == 0 {
+        move_if_exists_with_sha256(&channel_part_path, &channel_path)?;
+        move_if_exists(&release_part_path, &release_path)?;
+        Ok(())
+    } else {
+        Err(SyncError::FailedDownloads(errors))
+    }
 }
 
 /// Synchronize rustup.
@@ -202,47 +292,79 @@ pub fn sync(
     eprintln!("{}", style("Syncing Rustup repositories...").bold());
 
     // Mirror rustup-init
-    //eprintln!("{} Syncing rustup-init files...", style("[1/4]").bold());
     let prefix = format!("{} Syncing rustup-init files...", style("[1/4]").bold());
-    sync_rustup_init(path, &rustup.source, prefix, mirror.download_threads)?;
+    if let Err(e) = sync_rustup_init(
+        path,
+        &rustup.source,
+        prefix,
+        mirror.download_threads,
+        mirror.retries,
+    ) {
+        eprintln!("Downloading rustup init files failed: {:?}", e);
+        eprintln!("You will need to sync again to finish this download.");
+    }
 
     // Mirror stable
     if rustup.keep_latest_stables != Some(0) {
         let prefix = format!("{} Syncing latest stable...    ", style("[2/4]").bold());
-        sync_rustup_channel(
+        match sync_rustup_channel(
             path,
             &rustup.source,
             mirror.download_threads,
             prefix,
             "stable",
-        );
-        // Clean old stables
+            mirror.retries,
+        ) {
+            Ok(()) => {
+                // Clean old stables
+            }
+            Err(e) => {
+                eprintln!("Downloading stable release failed: {:?}", e);
+                eprintln!("You will need to sync again to finish this download.");
+            }
+        }
     }
 
     // Mirror beta
     if rustup.keep_latest_betas != Some(0) {
         let prefix = format!("{} Syncing latest beta...      ", style("[3/4]").bold());
-        sync_rustup_channel(
+        match sync_rustup_channel(
             path,
             &rustup.source,
             mirror.download_threads,
             prefix,
             "beta",
-        );
-        // Clean old betas
+            mirror.retries,
+        ) {
+            Ok(()) => {
+                // Clean old betas
+            }
+            Err(e) => {
+                eprintln!("Downloading beta release failed: {:?}", e);
+                eprintln!("You will need to sync again to finish this download.");
+            }
+        }
     }
 
     // Mirror nightly
     if rustup.keep_latest_nightlies != Some(0) {
         let prefix = format!("{} Syncing latest nightly...   ", style("[4/4]").bold());
-        sync_rustup_channel(
+        match sync_rustup_channel(
             path,
             &rustup.source,
             mirror.download_threads,
             prefix,
             "nightly",
-        );
-        // Clean old nightlies
+            mirror.retries,
+        ) {
+            Ok(()) => {
+                // Clean old nightlies
+            }
+            Err(e) => {
+                eprintln!("Downloading nightly release failed: {:?}", e);
+                eprintln!("You will need to sync again to finish this download.");
+            }
+        }
     }
 
     eprintln!("{}", style("Syncing Rustup repositories complete!").bold());

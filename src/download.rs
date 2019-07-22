@@ -1,6 +1,6 @@
 use sha2::{Digest, Sha256};
 use std::fs::File;
-use std::io::{ErrorKind, Read, Write};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 
@@ -26,34 +26,13 @@ quick_error! {
     }
 }
 
-/// Clone of the io::copy code, but with the buffer size changed to 64k
-fn fast_copy<R: ?Sized, W: ?Sized>(reader: &mut R, writer: &mut W) -> io::Result<u64>
-where
-    R: Read,
-    W: Write,
-{
-    let mut buf: [u8; 65536] = [0; 65536];
-
-    let mut written = 0;
-    loop {
-        let len = match reader.read(&mut buf) {
-            Ok(0) => return Ok(written),
-            Ok(len) => len,
-            Err(ref e) if e.kind() == ErrorKind::Interrupted => continue,
-            Err(e) => return Err(e),
-        };
-        writer.write_all(&buf[..len])?;
-        written += len as u64;
-    }
-}
-
 /// Download a URL and return it as a string.
 fn download_string(from: &str) -> Result<String, DownloadError> {
     Ok(reqwest::get(from)?.text()?)
 }
 
 /// Append a string to a path.
-fn append_to_path(path: &Path, suffix: &str) -> PathBuf {
+pub fn append_to_path(path: &Path, suffix: &str) -> PathBuf {
     let mut new_path = path.as_os_str().to_os_string();
     new_path.push(suffix);
     PathBuf::from(new_path)
@@ -90,74 +69,22 @@ pub fn create_file_create_dir(path: &Path) -> Result<File, DownloadError> {
     Ok(file_res?)
 }
 
-/// Download a file to a path, creating directories if needed.
-pub fn download_and_create_dir(from: &str, to: &Path) -> Result<(), DownloadError> {
-    let mut http_res = reqwest::get(from)?;
-
-    let mut f = create_file_create_dir(to)?;
-
-    http_res.copy_to(&mut f)?;
-
-    Ok(())
-}
-
-/// Get the (lowercase hex) sha256 hash of a file.
-fn file_sha256(path: &Path) -> Result<String, DownloadError> {
-    let mut file = File::open(path)?;
-    let mut sha256 = Sha256::new();
-    fast_copy(&mut file, &mut sha256)?;
-    Ok(format!("{:x}", sha256.result()))
-}
-
-/// If a file doesn't match a provided sha256, download a url to a path.
-pub fn download_with_sha256_str_verify(
-    url: &str,
-    path: &Path,
-    remote_sha256: &str,
-) -> Result<(), DownloadError> {
-    let do_download = if let Ok(local_file_sha256) = file_sha256(path) {
-        remote_sha256 != local_file_sha256
-    } else {
-        true
-    };
-
-    if do_download {
-        download_and_create_dir(url, path)?;
-    };
-
-    Ok(())
-}
-
-/// If an accompanying .sha256 file doesn't match or exist, download a url to a path.
-pub fn download_with_sha256_verify(url: &str, path: &Path) -> Result<(), DownloadError> {
-    let sha256_url = format!("{}.sha256", url);
-    let sha256_path = append_to_path(path, ".sha256");
-
-    let remote_sha256 = download_string(&sha256_url)?;
-
-    let do_download = if let Ok(local_sha256) = fs::read_to_string(&sha256_path) {
-        if local_sha256 == remote_sha256 {
-            if let Ok(local_file_sha256) = file_sha256(&path) {
-                remote_sha256[..local_file_sha256.len()] != local_file_sha256 // Download if sha256 doesn't match
-            } else {
-                true // Local file doesn't exist or couldn't be read, so try to download
-            }
-        } else {
-            true // Local sha256 file doesn't match, so download
-        }
-    } else {
-        true // Local sha256 file not found, so download
-    };
-
-    if do_download {
-        write_file_create_dir(&sha256_path, &remote_sha256)?;
-        download_and_create_dir(url, path)?;
+pub fn move_if_exists(from: &Path, to: &Path) -> Result<(), DownloadError> {
+    if from.exists() {
+        fs::rename(from, to)?;
     }
-
     Ok(())
 }
 
-fn one_download(url: &str, path: &Path, hash: &str) -> Result<(), DownloadError> {
+pub fn move_if_exists_with_sha256(from: &Path, to: &Path) -> Result<(), DownloadError> {
+    let sha256_from_path = append_to_path(from, ".sha256");
+    let sha256_to_path = append_to_path(to, ".sha256");
+    move_if_exists(&sha256_from_path, &sha256_to_path)?;
+    move_if_exists(&from, &to)?;
+    Ok(())
+}
+
+fn one_download(url: &str, path: &Path, hash: Option<&str>) -> Result<(), DownloadError> {
     let mut http_res = reqwest::get(url)?;
     let part_path = append_to_path(path, ".part");
     let mut sha256 = Sha256::new();
@@ -169,18 +96,25 @@ fn one_download(url: &str, path: &Path, hash: &str) -> Result<(), DownloadError>
             if byte_count == 0 {
                 break;
             }
-            sha256.write_all(&buf[..byte_count])?;
+            if hash.is_some() {
+                sha256.write_all(&buf[..byte_count])?;
+            }
             f.write_all(&buf[..byte_count])?;
         }
     }
 
     let f_hash = format!("{:x}", sha256.result());
 
-    if f_hash == hash {
+    if let Some(h) = hash {
+        if f_hash == h {
+            move_if_exists(&part_path, &path)?;
+            Ok(())
+        } else {
+            Err(DownloadError::MismatchedHash(h.to_string(), f_hash))
+        }
+    } else {
         fs::rename(part_path, path)?;
         Ok(())
-    } else {
-        Err(DownloadError::MismatchedHash(hash.to_string(), f_hash))
     }
 }
 
@@ -188,7 +122,7 @@ fn one_download(url: &str, path: &Path, hash: &str) -> Result<(), DownloadError>
 pub fn download(
     url: &str,
     path: &Path,
-    hash: &str,
+    hash: Option<&str>,
     retries: usize,
     force_download: bool,
 ) -> Result<(), DownloadError> {
@@ -200,7 +134,6 @@ pub fn download(
             res = match one_download(url, path, hash) {
                 Ok(_) => break,
                 Err(e) => {
-                    dbg!(&e);
                     Err(e)
                 }
             }
@@ -223,7 +156,7 @@ pub fn download_with_sha256_file(
     let sha256_data = download_string(&sha256_url)?;
 
     let sha256_hash = &sha256_data[..64];
-    let res = download(url, path, sha256_hash, retries, force_download);
+    let res = download(url, path, Some(sha256_hash), retries, force_download);
     if res.is_err() {
         return res;
     }
@@ -232,15 +165,4 @@ pub fn download_with_sha256_file(
     write_file_create_dir(&sha256_path, &sha256_data)?;
 
     Ok(())
-}
-
-/// Check if a file needs to be re-downloaded, based on its .sha256 file.
-pub fn check_if_up_to_date(url: &str, path: &Path) -> Result<bool, DownloadError> {
-    let sha256_url = format!("{}.sha256", url);
-    let sha256_data = download_string(&sha256_url)?;
-
-    let sha256_path = append_to_path(path, ".sha256");
-    let local_sha256_data = fs::read_to_string(&sha256_path)?;
-
-    Ok(sha256_data == local_sha256_data)
 }

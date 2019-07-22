@@ -18,6 +18,7 @@ quick_error! {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MirrorSection {
     pub download_threads: usize,
+    pub retries: usize,
     pub base_url: Option<String>,
 }
 
@@ -63,6 +64,7 @@ pub fn create_mirror_toml(path: &Path) -> Result<bool, io::Error> {
     let mirror = Mirror {
         mirror: MirrorSection {
             download_threads: 4,
+            retries: 5,
             base_url: Some("http://panamax.internal".to_string()),
         },
         rustup: Some(RustupSection {
