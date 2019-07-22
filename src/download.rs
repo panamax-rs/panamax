@@ -11,6 +11,7 @@ use std::io::{Read, Write, ErrorKind};
 // If the <name> file already exists, don't bother downloading it again
 // If downloading fails (sha256 doesn't match), retry downloading up to 5 times.
 // If retries run out, keep note of the failure somewhere.
+// Also, don't update the channel file unless everything else succeeded.
 
 quick_error! {
     #[derive(Debug)]
@@ -21,12 +22,39 @@ quick_error! {
         Download(err: reqwest::Error) {
             from()
         }
+        MismatchedHash(expected: String, actual: String) {}
+    }
+}
+
+/// Clone of the io::copy code, but with the buffer size changed to 64k
+fn fast_copy<R: ?Sized, W: ?Sized>(reader: &mut R, writer: &mut W) -> io::Result<u64>
+    where R: Read, W: Write
+{
+    let mut buf: [u8; 65536] = [0; 65536];
+
+    let mut written = 0;
+    loop {
+        let len = match reader.read(&mut buf) {
+            Ok(0) => return Ok(written),
+            Ok(len) => len,
+            Err(ref e) if e.kind() == ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        writer.write_all(&buf[..len])?;
+        written += len as u64;
     }
 }
 
 /// Download a URL and return it as a string.
-pub fn download_string(from: &str) -> Result<String, DownloadError> {
+fn download_string(from: &str) -> Result<String, DownloadError> {
     Ok(reqwest::get(from)?.text()?)
+}
+
+/// Append a string to a path.
+fn append_to_path(path: &Path, suffix: &str) -> PathBuf {
+    let mut new_path = path.as_os_str().to_os_string();
+    new_path.push(suffix);
+    PathBuf::from(new_path)
 }
 
 /// Write a string to a file, creating directories if needed.
@@ -72,7 +100,7 @@ pub fn download_and_create_dir(from: &str, to: &Path) -> Result<(), DownloadErro
 }
 
 /// Get the (lowercase hex) sha256 hash of a file.
-pub fn file_sha256(path: &Path) -> Result<String, DownloadError> {
+fn file_sha256(path: &Path) -> Result<String, DownloadError> {
     let mut file = File::open(path)?;
     let mut sha256 = Sha256::new();
     fast_copy(&mut file, &mut sha256)?;
@@ -94,14 +122,11 @@ pub fn download_with_sha256_str_verify(url: &str, path: &Path, remote_sha256: &s
     Ok(())
 }
 
+
 /// If an accompanying .sha256 file doesn't match or exist, download a url to a path.
 pub fn download_with_sha256_verify(url: &str, path: &Path) -> Result<(), DownloadError> {
     let sha256_url = format!("{}.sha256", url);
-    let sha256_path = {
-        let mut new_path = path.as_os_str().to_os_string();
-        new_path.push(".sha256");
-        PathBuf::from(new_path)
-    };
+    let sha256_path = append_to_path(path, ".sha256");
 
     let remote_sha256 = download_string(&sha256_url)?;
 
@@ -127,21 +152,68 @@ pub fn download_with_sha256_verify(url: &str, path: &Path) -> Result<(), Downloa
     Ok(())
 }
 
-/// Clone of the io::copy code, but with the buffer size changed to 64k
-pub fn fast_copy<R: ?Sized, W: ?Sized>(reader: &mut R, writer: &mut W) -> io::Result<u64>
-    where R: Read, W: Write
-{
-    let mut buf: [u8; 65536] = [0; 65536];
-
-    let mut written = 0;
-    loop {
-        let len = match reader.read(&mut buf) {
-            Ok(0) => return Ok(written),
-            Ok(len) => len,
-            Err(ref e) if e.kind() == ErrorKind::Interrupted => continue,
-            Err(e) => return Err(e),
-        };
-        writer.write_all(&buf[..len])?;
-        written += len as u64;
+fn one_download(url: &str, path: &Path, hash: &str) -> Result<(), DownloadError> {
+    let mut http_res = reqwest::get(url)?;
+    let part_path = append_to_path(path, ".part");
+    let mut sha256 = Sha256::new();
+    {
+        let mut f = create_file_create_dir(&part_path)?;
+        let mut buf = [0u8; 65536];
+        loop {
+            let byte_count = http_res.read(&mut buf)?;
+            if byte_count == 0 {
+                break;
+            }
+            sha256.write_all(&buf[..byte_count])?;
+            f.write_all(&buf[..byte_count])?;
+        }
     }
+
+    let f_hash = format!("{:x}", sha256.result());
+
+    if f_hash == hash {
+        fs::rename(part_path, path)?;
+        Ok(())
+    } else {
+        Err(DownloadError::MismatchedHash(hash.to_string(), f_hash))
+    }
+}
+
+/// Download file, verifying its hash, and retrying if needed
+pub fn download(url: &str, path: &Path, hash: &str, retries: usize) -> Result<(), DownloadError> {
+    if path.exists() {
+        Ok(())
+    } else {
+        let mut res = Ok(());
+        for _ in 0..=retries {
+            res = match one_download(url, path, hash) {
+                Ok(_) => break,
+                Err(e) => {
+                    dbg!(&e);
+                    Err(e)
+                }
+            }
+        }
+        if res.is_err() {
+            return res
+        }
+        Ok(())
+    }
+}
+
+/// Download file and associated .sha256 file, verifying the hash, and retrying if needed
+pub fn download_with_sha256_file(url: &str, path: &Path, retries: usize) -> Result<(), DownloadError> {
+    let sha256_url = format!("{}.sha256", url);
+    let sha256_data = download_string(&sha256_url)?;
+
+    let sha256_hash = &sha256_data[..64];
+    let res = download(url, path, sha256_hash, retries);
+    if res.is_err() {
+        return res
+    }
+
+    let sha256_path = append_to_path(path, ".sha256");
+    write_file_create_dir(&sha256_path, &sha256_data)?;
+
+    Ok(())
 }

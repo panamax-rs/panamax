@@ -10,7 +10,7 @@ repository = "https://github.com/k3d3/panamax"
 edition = "2018"
 
 [dependencies]
-reqwest = "0.9.18"
+reqwest = "0.9.19"
 indicatif = "0.11.0"
 structopt = "0.2.18"
 toml = "0.5.1"
