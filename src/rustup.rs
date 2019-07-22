@@ -1,13 +1,13 @@
 use crate::download::{
     append_to_path, download, download_with_sha256_file, move_if_exists,
-    move_if_exists_with_sha256, DownloadError,
+    move_if_exists_with_sha256, write_file_create_dir, DownloadError,
 };
 use crate::mirror::{MirrorError, MirrorSection, RustupSection};
 use crate::progress_bar::{progress_bar, ProgressBarMessage};
 use console::style;
 use scoped_threadpool::Pool;
-use serde::Deserialize;
-use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{fs, io};
@@ -60,6 +60,12 @@ quick_error! {
             from()
         }
         Parse(err: toml::de::Error) {
+            from()
+        }
+        Serialize(err: toml::ser::Error) {
+            from()
+        }
+        StripPrefix(err: std::path::StripPrefixError) {
             from()
         }
         FailedDownloads(count: usize) {}
@@ -144,7 +150,7 @@ pub fn sync_rustup_init(
         }
     });
 
-    pb_thread.join().unwrap();
+    pb_thread.join().expect("Thread join should not fail");
 
     let errors = errors_occurred.load(Ordering::Acquire);
     if errors == 0 {
@@ -185,26 +191,38 @@ struct Channel {
 }
 
 /// Get the rustup file downloads, in pairs of URLs and sha256 hashes.
-pub fn rustup_download_list(path: &Path) -> Result<Vec<(String, String)>, SyncError> {
+pub fn rustup_download_list(
+    path: &Path,
+    source: &str,
+) -> Result<(String, Vec<(String, String)>), SyncError> {
     let channel_str = fs::read_to_string(path).map_err(|e| DownloadError::Io(e))?;
     let channel: Channel = toml::from_str(&channel_str)?;
 
-    Ok(channel
-        .pkg
-        .into_iter()
-        .flat_map(|(_, pkg)| {
-            pkg.target
-                .into_iter()
-                .flat_map(|(_, target)| -> Vec<(String, String)> {
-                    target
-                        .target_urls
-                        .map(|urls| vec![(urls.url, urls.hash), (urls.xz_url, urls.xz_hash)])
-                        .into_iter()
-                        .flatten()
-                        .collect()
-                })
-        })
-        .collect())
+    Ok((
+        channel.date,
+        channel
+            .pkg
+            .into_iter()
+            .flat_map(|(_, pkg)| {
+                pkg.target
+                    .into_iter()
+                    .flat_map(|(_, target)| -> Vec<(String, String)> {
+                        target
+                            .target_urls
+                            .map(|urls| vec![(urls.url, urls.hash), (urls.xz_url, urls.xz_hash)])
+                            .into_iter()
+                            .flatten()
+                            .map(|(url, hash)| {
+                                (
+                                    url[source.len()..].trim_start_matches("/").to_string(),
+                                    hash,
+                                )
+                            })
+                            .collect()
+                    })
+            })
+            .collect(),
+    ))
 }
 
 pub fn sync_one_rustup_target(
@@ -215,8 +233,147 @@ pub fn sync_one_rustup_target(
     retries: usize,
 ) -> Result<(), DownloadError> {
     // Chop off the source portion of the URL, to mimic the rest of the path
-    let target_path = path.join(url[source.len()..].trim_start_matches("/"));
-    download(url, &target_path, Some(hash), retries, false)?;
+    //let target_url = path.join(url[source.len()..].trim_start_matches("/"));
+    let target_url = format!("{}/{}", source, url);
+    let target_path = path.join(url);
+
+    download(&target_url, &target_path, Some(hash), retries, false)?;
+    Ok(())
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ChannelHistoryFile {
+    pub versions: HashMap<String, Vec<String>>,
+}
+
+pub fn latest_dates_from_channel_history(
+    channel_history: &ChannelHistoryFile,
+    versions: usize,
+) -> Vec<String> {
+    let mut dates: Vec<String> = channel_history
+        .versions
+        .keys()
+        .map(|x| x.to_string())
+        .collect();
+    dates.sort();
+    dates.reverse();
+    dates.truncate(versions);
+    dates
+}
+
+pub fn clean_old_files(
+    path: &Path,
+    keep_stables: Option<usize>,
+    keep_betas: Option<usize>,
+    keep_nightlies: Option<usize>,
+    prefix: String,
+) -> Result<(), SyncError> {
+    // Handle all of stable/beta/nightly
+    let mut files_to_keep: HashSet<String> = HashSet::new();
+    if let Some(s) = keep_stables {
+        let mut stable = get_channel_history(path, "stable")?;
+        let latest_dates = latest_dates_from_channel_history(&stable, s);
+        for date in latest_dates {
+            if let Some(t) = stable.versions.get_mut(&date) {
+                t.iter().for_each(|t| {
+                    files_to_keep.insert(t.to_string());
+                });
+            }
+        }
+    }
+    if let Some(b) = keep_betas {
+        let mut beta = get_channel_history(path, "beta")?;
+        let latest_dates = latest_dates_from_channel_history(&beta, b);
+        for date in latest_dates {
+            if let Some(t) = beta.versions.get_mut(&date) {
+                //files_to_keep.append(&mut t);
+                t.iter().for_each(|t| {
+                    files_to_keep.insert(t.to_string());
+                });
+            }
+        }
+    }
+    if let Some(n) = keep_nightlies {
+        let mut nightly = get_channel_history(path, "nightly")?;
+        let latest_dates = latest_dates_from_channel_history(&nightly, n);
+        for date in latest_dates {
+            if let Some(t) = nightly.versions.get_mut(&date) {
+                t.iter().for_each(|t| {
+                    files_to_keep.insert(t.to_string());
+                });
+            }
+        }
+    }
+
+    let dist_path = path.join("dist");
+    let mut files_to_delete: Vec<String> = vec![];
+
+    for dir in fs::read_dir(dist_path)? {
+        let dir = dir?.path();
+        if dir.is_dir() {
+            for full_path in fs::read_dir(dir)? {
+                let full_path = full_path?.path();
+                let file_path = full_path.strip_prefix(path)?;
+                if let Some(file_path) = file_path.to_str() {
+                    if !files_to_keep.contains(file_path) {
+                        files_to_delete.push(file_path.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    // Progress bar!
+    let (pb_thread, sender) = progress_bar(files_to_delete.len(), prefix);
+
+    for f in files_to_delete {
+        if let Err(e) = fs::remove_file(path.join(&f)) {
+            sender
+                .send(ProgressBarMessage::Println(format!(
+                    "Could not remove file {}: {:?}",
+                    f, e
+                )))
+                .expect("Channel send should not fail");
+        }
+        sender
+            .send(ProgressBarMessage::Increment)
+            .expect("Channel send should not fail");
+    }
+
+    pb_thread.join().expect("Thread join should not fail");
+
+    Ok(())
+}
+
+pub fn get_channel_history(path: &Path, channel: &str) -> Result<ChannelHistoryFile, SyncError> {
+    let channel_history_path = path.join(format!("mirror-{}-history.toml", channel));
+    if channel_history_path.exists() {
+        let ch_data = fs::read_to_string(channel_history_path)?;
+        Ok(toml::from_str(&ch_data)?)
+    } else {
+        Ok(ChannelHistoryFile {
+            versions: HashMap::new(),
+        })
+    }
+}
+
+pub fn add_to_channel_history(
+    path: &Path,
+    channel: &str,
+    date: &str,
+    files: &Vec<(String, String)>,
+) -> Result<(), SyncError> {
+    let mut channel_history = get_channel_history(path, channel)?;
+    channel_history.versions.insert(
+        date.to_string(),
+        files.iter().map(|(f, _)| f.to_string()).collect(),
+    );
+
+    let ch_data = toml::to_string(&channel_history)?;
+
+    let channel_history_path = path.join(format!("mirror-{}-history.toml", channel));
+    write_file_create_dir(&channel_history_path, &ch_data)?;
+
     Ok(())
 }
 
@@ -242,17 +399,17 @@ pub fn sync_rustup_channel(
     download(&release_url, &release_part_path, None, retries, false)?;
 
     // Open toml file, find all files to download
-    let downloads = rustup_download_list(&channel_part_path)?;
+    let (date, files) = rustup_download_list(&channel_part_path, source)?;
 
     // Create progress bar
-    let (pb_thread, sender) = progress_bar(downloads.len(), prefix);
+    let (pb_thread, sender) = progress_bar(files.len(), prefix);
 
     let errors_occurred = AtomicUsize::new(0);
 
     // Download files
     Pool::new(threads as u32).scoped(|scoped| {
         let error_occurred = &errors_occurred;
-        for (url, hash) in &downloads {
+        for (url, hash) in &files {
             let s = sender.clone();
             scoped.execute(move || {
                 if let Err(e) = sync_one_rustup_target(&path, &source, &url, &hash, retries) {
@@ -271,10 +428,12 @@ pub fn sync_rustup_channel(
     });
 
     // Wait for progress bar to finish
-    pb_thread.join().unwrap();
+    pb_thread.join().expect("Thread join should not fail");
 
     let errors = errors_occurred.load(Ordering::Acquire);
     if errors == 0 {
+        // Write channel history file
+        add_to_channel_history(path, channel, &date, &files)?;
         move_if_exists_with_sha256(&channel_part_path, &channel_path)?;
         move_if_exists(&release_part_path, &release_path)?;
         Ok(())
@@ -292,7 +451,7 @@ pub fn sync(
     eprintln!("{}", style("Syncing Rustup repositories...").bold());
 
     // Mirror rustup-init
-    let prefix = format!("{} Syncing rustup-init files...", style("[1/4]").bold());
+    let prefix = format!("{} Syncing rustup-init files...", style("[1/5]").bold());
     if let Err(e) = sync_rustup_init(
         path,
         &rustup.source,
@@ -304,10 +463,12 @@ pub fn sync(
         eprintln!("You will need to sync again to finish this download.");
     }
 
+    let mut failures = false;
+
     // Mirror stable
     if rustup.keep_latest_stables != Some(0) {
-        let prefix = format!("{} Syncing latest stable...    ", style("[2/4]").bold());
-        match sync_rustup_channel(
+        let prefix = format!("{} Syncing latest stable...    ", style("[2/5]").bold());
+        if let Err(e) = sync_rustup_channel(
             path,
             &rustup.source,
             mirror.download_threads,
@@ -315,20 +476,18 @@ pub fn sync(
             "stable",
             mirror.retries,
         ) {
-            Ok(()) => {
-                // Clean old stables
-            }
-            Err(e) => {
-                eprintln!("Downloading stable release failed: {:?}", e);
-                eprintln!("You will need to sync again to finish this download.");
-            }
+            failures = true;
+            eprintln!("Downloading stable release failed: {:?}", e);
+            eprintln!("You will need to sync again to finish this download.");
         }
+    } else {
+        eprintln!("{} Skipping syncing stable.", style("[2/5]").bold());
     }
 
     // Mirror beta
     if rustup.keep_latest_betas != Some(0) {
-        let prefix = format!("{} Syncing latest beta...      ", style("[3/4]").bold());
-        match sync_rustup_channel(
+        let prefix = format!("{} Syncing latest beta...      ", style("[3/5]").bold());
+        if let Err(e) = sync_rustup_channel(
             path,
             &rustup.source,
             mirror.download_threads,
@@ -336,20 +495,18 @@ pub fn sync(
             "beta",
             mirror.retries,
         ) {
-            Ok(()) => {
-                // Clean old betas
-            }
-            Err(e) => {
-                eprintln!("Downloading beta release failed: {:?}", e);
-                eprintln!("You will need to sync again to finish this download.");
-            }
+            failures = true;
+            eprintln!("Downloading beta release failed: {:?}", e);
+            eprintln!("You will need to sync again to finish this download.");
         }
+    } else {
+        eprintln!("{} Skipping syncing beta.", style("[3/5]").bold());
     }
 
     // Mirror nightly
     if rustup.keep_latest_nightlies != Some(0) {
-        let prefix = format!("{} Syncing latest nightly...   ", style("[4/4]").bold());
-        match sync_rustup_channel(
+        let prefix = format!("{} Syncing latest nightly...   ", style("[4/5]").bold());
+        if let Err(e) = sync_rustup_channel(
             path,
             &rustup.source,
             mirror.download_threads,
@@ -357,13 +514,36 @@ pub fn sync(
             "nightly",
             mirror.retries,
         ) {
-            Ok(()) => {
-                // Clean old nightlies
-            }
-            Err(e) => {
-                eprintln!("Downloading nightly release failed: {:?}", e);
-                eprintln!("You will need to sync again to finish this download.");
-            }
+            failures = true;
+            eprintln!("Downloading nightly release failed: {:?}", e);
+            eprintln!("You will need to sync again to finish this download.");
+        }
+    } else {
+        eprintln!("{} Skipping syncing nightly.", style("[4/5]").bold());
+    }
+
+    // If all succeeds, clean files
+    if rustup.keep_latest_stables == None
+        && rustup.keep_latest_betas == None
+        && rustup.keep_latest_nightlies == None
+    {
+        eprintln!("{} Skipping cleaning files.", style("[5/5]").bold());
+    } else if failures {
+        eprintln!(
+            "{} Skipping cleaning files due to download failures.",
+            style("[5/5]").bold()
+        );
+    } else {
+        let prefix = format!("{} Cleaning old files...       ", style("[5/5]").bold());
+        if let Err(e) = clean_old_files(
+            path,
+            rustup.keep_latest_stables,
+            rustup.keep_latest_betas,
+            rustup.keep_latest_nightlies,
+            prefix,
+        ) {
+            eprintln!("Cleaning old files failed: {:?}", e);
+            eprintln!("You may need to sync again to clean these files.");
         }
     }
 
