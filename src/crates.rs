@@ -41,23 +41,17 @@ pub fn sync_crates_repo(path: &Path, crates: &CratesSection) {
     let mut fetch_options = FetchOptions::new();
     fetch_options.remote_callbacks(remote_callbacks);
 
-    if !repo_path.join(".git").exists() {
+    let repo = if !repo_path.join(".git").exists() {
         let mut init_opts = RepositoryInitOptions::new();
         init_opts.origin_url(&crates.source_index);
-        let repo = Repository::init_opts(repo_path, &init_opts).unwrap();
-
-        repo.find_remote("origin")
-            .unwrap()
-            .fetch(&["master"], Some(&mut fetch_options), None)
-            .unwrap();
-
+        Repository::init_opts(repo_path, &init_opts).unwrap()
     } else {
-        let repo = Repository::open(repo_path).unwrap();
-        repo.find_remote("origin")
-            .unwrap()
-            .fetch(&["master"], Some(&mut fetch_options), None)
-            .unwrap();
-    }
+        Repository::open(repo_path).unwrap()
+    };
+    repo.find_remote("origin")
+        .unwrap()
+        .fetch(&["master"], Some(&mut fetch_options), None)
+        .unwrap();
     sender.send(ProgressBarMessage::Done).unwrap();
     pb_thread.join().unwrap();
     // Only checkout and merge master once crate files are downloaded
