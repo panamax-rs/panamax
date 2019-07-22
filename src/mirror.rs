@@ -107,9 +107,12 @@ pub fn init(path: &Path) -> Result<(), MirrorError> {
     Ok(())
 }
 
-pub fn sync(path: &Path) -> Result<(), MirrorError>{
+pub fn sync(path: &Path) -> Result<(), MirrorError> {
     if !path.join("mirror.toml").exists() {
-        eprintln!("Mirror base not found! Run panamax init {} first.", path.display());
+        eprintln!(
+            "Mirror base not found! Run panamax init {} first.",
+            path.display()
+        );
         return Ok(());
     }
     let mirror = load_mirror_toml(path)?;
@@ -126,7 +129,7 @@ pub fn sync(path: &Path) -> Result<(), MirrorError>{
 
     if let Some(crates) = mirror.crates {
         if crates.sync {
-            //crate::crates::sync(path,&mirror.mirror, &crates).unwrap();
+            crate::crates::sync(path, &mirror.mirror, &crates).unwrap();
         } else {
             eprintln!("Crates sync is disabled, skipping...");
         }

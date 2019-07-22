@@ -109,7 +109,7 @@ pub fn sync_rustup_init(
 ) -> Result<(), SyncError> {
     let count = PLATFORMS.len() + PLATFORMS_EXE.len();
 
-    let (pb_thread, sender) = progress_bar(count, prefix);
+    let (pb_thread, sender) = progress_bar(Some(count), prefix);
 
     let errors_occurred = AtomicUsize::new(0);
 
@@ -324,7 +324,7 @@ pub fn clean_old_files(
     }
 
     // Progress bar!
-    let (pb_thread, sender) = progress_bar(files_to_delete.len(), prefix);
+    let (pb_thread, sender) = progress_bar(Some(files_to_delete.len()), prefix);
 
     for f in files_to_delete {
         if let Err(e) = fs::remove_file(path.join(&f)) {
@@ -402,7 +402,7 @@ pub fn sync_rustup_channel(
     let (date, files) = rustup_download_list(&channel_part_path, source)?;
 
     // Create progress bar
-    let (pb_thread, sender) = progress_bar(files.len(), prefix);
+    let (pb_thread, sender) = progress_bar(Some(files.len()), prefix);
 
     let errors_occurred = AtomicUsize::new(0);
 
