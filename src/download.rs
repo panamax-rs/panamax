@@ -23,6 +23,7 @@ quick_error! {
             from()
         }
         MismatchedHash(expected: String, actual: String) {}
+        Forbidden {}
     }
 }
 
@@ -91,6 +92,9 @@ fn one_download(url: &str, path: &Path, hash: Option<&str>) -> Result<(), Downlo
     {
         let mut f = create_file_create_dir(&part_path)?;
         let mut buf = [0u8; 65536];
+        if http_res.status() == 403 {
+            return Err(DownloadError::Forbidden);
+        }
         loop {
             let byte_count = http_res.read(&mut buf)?;
             if byte_count == 0 {
@@ -138,6 +142,9 @@ pub fn download(
                 }
             }
         }
+        // TODO: keep the download if the hash is the same repeatedly
+        // save hash in <file>.unexpected_sha256
+        // Next download, check file and don't re-download if file exists and matches the first download
         if res.is_err() {
             return res;
         }
