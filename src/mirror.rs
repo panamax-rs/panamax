@@ -65,29 +65,10 @@ pub fn create_mirror_toml(path: &Path) -> Result<bool, io::Error> {
         return Ok(false);
     }
 
-    let mirror = Mirror {
-        mirror: MirrorSection {
-            retries: 5,
-            contact: Some("your@email.com".to_string()),
-            base_url: Some("http://panamax.internal".to_string()),
-        },
-        rustup: Some(RustupSection {
-            sync: true,
-            download_threads: 4,
-            source: "https://static.rust-lang.org".to_string(),
-            keep_latest_stables: Some(1),
-            keep_latest_betas: Some(1),
-            keep_latest_nightlies: Some(1),
-        }),
-        crates: Some(CratesSection {
-            sync: true,
-            download_threads: 16,
-            source: "https://crates.io/api/v1/crates".to_string(),
-            source_index: "https://github.com/rust-lang/crates.io-index".to_string(),
-        }),
-    };
-    let mirror_str = toml::to_string(&mirror).expect("Could not create mirror.toml content");
-    fs::write(path.join("mirror.toml"), mirror_str)?;
+    let mirror = include_str!("mirror.default.toml");
+
+    fs::write(path.join("mirror.toml"), mirror)?;
+
     Ok(true)
 }
 
@@ -96,6 +77,7 @@ pub fn load_mirror_toml(path: &Path) -> Result<Mirror, MirrorError> {
         path.join("mirror.toml"),
     )?)?)
 }
+
 
 pub fn init(path: &Path) -> Result<(), MirrorError> {
     create_mirror_directories(path)?;
@@ -113,6 +95,17 @@ pub fn init(path: &Path) -> Result<(), MirrorError> {
     Ok(())
 }
 
+pub fn default_user_agent() -> String {
+    eprintln!("{}", style("No contact information was provided!").bold());
+    eprintln!("As per the crates.io crawling policy, lacking this may cause your IP to be blocked.");
+    eprintln!("Please set this in your mirror.toml.");
+    eprintln!();
+    format!(
+        "Panamax/{} (No contact information provided)",
+        env!("CARGO_PKG_VERSION")
+    )
+}
+
 pub fn sync(path: &Path) -> Result<(), MirrorError> {
     if !path.join("mirror.toml").exists() {
         eprintln!(
@@ -126,16 +119,13 @@ pub fn sync(path: &Path) -> Result<(), MirrorError> {
     // Handle the contact information
 
     let user_agent_str = if let Some(ref contact) = mirror.mirror.contact {
-        format!("Panamax/{} ({})", env!("CARGO_PKG_VERSION"), contact)
+        if contact != "your@email.com" {
+            format!("Panamax/{} ({})", env!("CARGO_PKG_VERSION"), contact)
+        } else {
+            default_user_agent()
+        }
     } else {
-        eprintln!("{}", style("No contact information was provided!").bold());
-        eprintln!("As per the crates.io crawling policy, lacking this may cause your IP to be blocked.");
-        eprintln!("Please set this in your mirror.toml.");
-        eprintln!();
-        format!(
-            "Panamax/{} (No contact information provided)",
-            env!("CARGO_PKG_VERSION")
-        )
+        default_user_agent()
     };
 
     let user_agent = match HeaderValue::from_str(&user_agent_str) {
