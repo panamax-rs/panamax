@@ -1,17 +1,10 @@
+use reqwest::header::{HeaderValue, USER_AGENT};
+use reqwest::Client;
 use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::{fs, io};
-
-// General download strategy:
-// 1: Download the sha256 file (or acquire the needed sha256 for a file)
-// 2: Download the file to <name>.part and check sha256 as it downloads
-// 3: Only when file is fully download and sha256 verified, move file to <name>
-// If the <name> file already exists, don't bother downloading it again
-// If downloading fails (sha256 doesn't match), retry downloading up to 5 times.
-// If retries run out, keep note of the failure somewhere.
-// Also, don't update the channel file unless everything else succeeded.
 
 quick_error! {
     #[derive(Debug)]
@@ -23,13 +16,15 @@ quick_error! {
             from()
         }
         MismatchedHash(expected: String, actual: String) {}
-        Forbidden {}
+        NotFound(status: u16, url: String, data: String) {}
     }
 }
 
+thread_local!(static CLIENT: Client = Client::new());
+
 /// Download a URL and return it as a string.
-fn download_string(from: &str) -> Result<String, DownloadError> {
-    Ok(reqwest::get(from)?.text()?)
+fn download_string(from: &str, user_agent: &HeaderValue) -> Result<String, DownloadError> {
+    Ok(CLIENT.with(|client| client.get(from).header(USER_AGENT, user_agent).send()?.text())?)
 }
 
 /// Append a string to a path.
@@ -85,41 +80,61 @@ pub fn move_if_exists_with_sha256(from: &Path, to: &Path) -> Result<(), Download
     Ok(())
 }
 
-fn one_download(url: &str, path: &Path, hash: Option<&str>) -> Result<(), DownloadError> {
-    let mut http_res = reqwest::get(url)?;
-    let part_path = append_to_path(path, ".part");
-    let mut sha256 = Sha256::new();
-    {
-        let mut f = create_file_create_dir(&part_path)?;
-        let mut buf = [0u8; 65536];
-        if http_res.status() == 403 {
-            return Err(DownloadError::Forbidden);
-        }
-        loop {
-            let byte_count = http_res.read(&mut buf)?;
-            if byte_count == 0 {
-                break;
+fn one_download(
+    url: &str,
+    path: &Path,
+    hash: Option<&str>,
+    user_agent: &HeaderValue,
+) -> Result<(), DownloadError> {
+    CLIENT.with(|client| {
+        let mut http_res = client.get(url).header(USER_AGENT, user_agent).send()?;
+        let part_path = append_to_path(path, ".part");
+        let mut sha256 = Sha256::new();
+        {
+            let mut f = create_file_create_dir(&part_path)?;
+            let mut buf = [0u8; 65536];
+            let status = http_res.status();
+            if status == 403 || status == 404 {
+                let forbidden_path = append_to_path(path, ".notfound");
+                let text = http_res.text()?;
+                fs::write(
+                    forbidden_path,
+                    format!(
+                        "Server returned {}: {}",
+                        status,
+                        &text
+                    ),
+                )?;
+                return Err(DownloadError::NotFound(status.as_u16(), url.to_string(), text));
             }
-            if hash.is_some() {
-                sha256.write_all(&buf[..byte_count])?;
+            loop {
+                let byte_count = http_res.read(&mut buf)?;
+                if byte_count == 0 {
+                    break;
+                }
+                if hash.is_some() {
+                    sha256.write_all(&buf[..byte_count])?;
+                }
+                f.write_all(&buf[..byte_count])?;
             }
-            f.write_all(&buf[..byte_count])?;
         }
-    }
 
-    let f_hash = format!("{:x}", sha256.result());
+        let f_hash = format!("{:x}", sha256.result());
 
-    if let Some(h) = hash {
-        if f_hash == h {
-            move_if_exists(&part_path, &path)?;
-            Ok(())
+        if let Some(h) = hash {
+            if f_hash == h {
+                move_if_exists(&part_path, &path)?;
+                Ok(())
+            } else {
+                let badsha_path = append_to_path(path, ".badsha256");
+                fs::write(badsha_path, &f_hash)?;
+                Err(DownloadError::MismatchedHash(h.to_string(), f_hash))
+            }
         } else {
-            Err(DownloadError::MismatchedHash(h.to_string(), f_hash))
+            fs::rename(part_path, path)?;
+            Ok(())
         }
-    } else {
-        fs::rename(part_path, path)?;
-        Ok(())
-    }
+    })
 }
 
 /// Download file, verifying its hash, and retrying if needed
@@ -129,22 +144,18 @@ pub fn download(
     hash: Option<&str>,
     retries: usize,
     force_download: bool,
+    user_agent: &HeaderValue,
 ) -> Result<(), DownloadError> {
     if path.exists() && !force_download {
         Ok(())
     } else {
         let mut res = Ok(());
         for _ in 0..=retries {
-            res = match one_download(url, path, hash) {
+            res = match one_download(url, path, hash, user_agent) {
                 Ok(_) => break,
-                Err(e) => {
-                    Err(e)
-                }
+                Err(e) => Err(e),
             }
         }
-        // TODO: keep the download if the hash is the same repeatedly
-        // save hash in <file>.unexpected_sha256
-        // Next download, check file and don't re-download if file exists and matches the first download
         if res.is_err() {
             return res;
         }
@@ -158,12 +169,20 @@ pub fn download_with_sha256_file(
     path: &Path,
     retries: usize,
     force_download: bool,
+    user_agent: &HeaderValue,
 ) -> Result<(), DownloadError> {
     let sha256_url = format!("{}.sha256", url);
-    let sha256_data = download_string(&sha256_url)?;
+    let sha256_data = download_string(&sha256_url, user_agent)?;
 
     let sha256_hash = &sha256_data[..64];
-    let res = download(url, path, Some(sha256_hash), retries, force_download);
+    let res = download(
+        url,
+        path,
+        Some(sha256_hash),
+        retries,
+        force_download,
+        user_agent,
+    );
     if res.is_err() {
         return res;
     }

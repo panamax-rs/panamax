@@ -3,6 +3,7 @@ use crate::mirror::{CratesSection, MirrorError, MirrorSection};
 use crate::progress_bar::{progress_bar, ProgressBarMessage};
 use console::style;
 use git2::{FetchOptions, RemoteCallbacks, Repository, RepositoryInitOptions};
+use reqwest::header::HeaderValue;
 use scoped_threadpool::Pool;
 use serde::{Deserialize, Serialize};
 use std::io::{self, BufRead, Cursor};
@@ -31,15 +32,28 @@ pub struct CrateEntry {
 
 pub fn sync_one_crate_entry(
     path: &Path,
-    source: &str,
+    source: Option<&str>,
     retries: usize,
     crate_entry: &CrateEntry,
+    user_agent: &HeaderValue,
 ) -> Result<(), DownloadError> {
     // What's the URL, what's the download path
-    let url = format!(
-        "{}/{}/{}/download",
-        source, crate_entry.name, crate_entry.vers
-    );
+
+    // If source is "https://crates.io/api/v1/crates" (the default, and thus a None here)
+    // download straight from the static.crates.io CDN, to avoid bogging down crates.io itself
+    // or affecting its statistics, and avoiding an extra redirect for each crate.
+    let url = if let Some(source) = source {
+        format!(
+            "{}/{}/{}/download",
+            source, crate_entry.name, crate_entry.vers
+        )
+    } else {
+        format!(
+            "https://static.crates.io/crates/{}/{}-{}.crate",
+            crate_entry.name, crate_entry.name, crate_entry.vers
+        )
+    };
+
     let file_path = path
         .join("crates")
         .join(&crate_entry.name)
@@ -51,6 +65,7 @@ pub fn sync_one_crate_entry(
         Some(&crate_entry.cksum),
         retries,
         false,
+        user_agent,
     )
 }
 
@@ -58,7 +73,7 @@ pub fn sync_one_crate_entry(
 pub fn sync_crates_repo(path: &Path, crates: &CratesSection) {
     let repo_path = path.join("crates.io-index");
 
-    let prefix = format!("{} Syncing crates.io-index...", style("[1/3]").bold());
+    let prefix = format!("{} Syncing crates.io-index...  ", style("[1/3]").bold());
     let (pb_thread, sender) = progress_bar(None, prefix);
     let mut remote_callbacks = RemoteCallbacks::new();
     remote_callbacks.transfer_progress(|p| {
@@ -88,12 +103,24 @@ pub fn sync_crates_repo(path: &Path, crates: &CratesSection) {
     pb_thread.join().unwrap();
 }
 
-pub fn sync_crates_files(path: &Path, mirror: &MirrorSection, crates: &CratesSection) {
-    let prefix = format!("{} Syncing crates files...", style("[2/3]").bold());
+pub fn sync_crates_files(
+    path: &Path,
+    mirror: &MirrorSection,
+    crates: &CratesSection,
+    user_agent: &HeaderValue,
+) {
+    let prefix = format!("{} Syncing crates files...     ", style("[2/3]").bold());
 
     // For now, assume successful crates.io-index download
     let repo_path = path.join("crates.io-index");
     let repo = Repository::open(repo_path).unwrap();
+
+    // Set the crates.io URL, or None if default
+    let crates_source = if crates.source == "https://crates.io/api/v1/crates" {
+        None
+    } else {
+        Some(crates.source.as_ref())
+    };
 
     // Find References for origin/master and master (if it exists)
     let origin_master = repo.find_reference("refs/remotes/origin/master").unwrap();
@@ -132,7 +159,7 @@ pub fn sync_crates_files(path: &Path, mirror: &MirrorSection, crates: &CratesSec
 
     let (pb_thread, sender) = progress_bar(Some(count), prefix);
 
-    Pool::new(mirror.download_threads as u32).scoped(|scoped| {
+    Pool::new(crates.download_threads as u32).scoped(|scoped| {
         diff.foreach(
             &mut |delta, _| {
                 let df = delta.new_file();
@@ -149,16 +176,22 @@ pub fn sync_crates_files(path: &Path, mirror: &MirrorSection, crates: &CratesSec
                     let c: CrateEntry = serde_json::from_str(&line).unwrap();
                     let s = sender.clone();
                     scoped.execute(move || {
-                        match
-                            sync_one_crate_entry(path, &crates.source, mirror.retries, &c)
-                        {
-                            Ok(()) | Err(DownloadError::Forbidden) | Err(DownloadError::MismatchedHash(_,_)) => {},
+                        match sync_one_crate_entry(
+                            path,
+                            crates_source,
+                            mirror.retries,
+                            &c,
+                            user_agent,
+                        ) {
+                            Ok(())
+                            | Err(DownloadError::NotFound(_, _, _))
+                            | Err(DownloadError::MismatchedHash(_, _)) => {}
                             Err(e) => {
                                 s.send(ProgressBarMessage::Println(format!(
                                     "Downloading {} {} failed: {:?}",
-                                    &c.name, &c.vers,
-                                    e
-                                ))).unwrap();
+                                    &c.name, &c.vers, e
+                                )))
+                                .unwrap();
                             }
                         }
                         &s.send(ProgressBarMessage::Increment);
@@ -175,41 +208,22 @@ pub fn sync_crates_files(path: &Path, mirror: &MirrorSection, crates: &CratesSec
     });
 
     pb_thread.join().unwrap();
-
-    /*diff
-    .walk(TreeWalkMode::PreOrder, |_, e| {
-        if e.kind() == Some(ObjectType::Blob) {
-            count += 1;
-        }
-        TreeWalkResult::Ok
-    })
-    .unwrap();*/
-
-    /*diff
-    .walk(TreeWalkMode::PreOrder, |_s, e| {
-        if e.kind() == Some(ObjectType::Blob) {
-            let obj = e.to_object(&repo).unwrap();
-            let blob = obj.as_blob().unwrap();
-            let json_data = String::from_utf8(blob.content().to_vec()).unwrap();
-        }
-        TreeWalkResult::Ok
-    })
-    .unwrap();*/
 }
 
 pub fn sync(
     path: &Path,
     mirror: &MirrorSection,
     crates: &CratesSection,
+    user_agent: &HeaderValue,
 ) -> Result<(), MirrorError> {
     eprintln!("{}", style("Syncing Crates repositories...").bold());
 
     sync_crates_repo(path, crates);
 
-    sync_crates_files(path, mirror, crates);
+    sync_crates_files(path, mirror, crates, user_agent);
 
     if let Some(_base_url) = &mirror.base_url {
-        eprintln!("{} Merging crates.io-index...", style("[3/3]").bold());
+        eprintln!("{} Merging crates.io-index...  ", style("[3/3]").bold());
     } else {
 
     }
