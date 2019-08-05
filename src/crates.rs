@@ -19,6 +19,9 @@ quick_error! {
             from()
         }
         FailedDownloads(count: usize) {}
+        GitError(err: git2::Error) {
+            from()
+        }
     }
 }
 
@@ -30,6 +33,7 @@ pub struct CrateEntry {
     yanked: bool,
 }
 
+/// Download one single crate file.
 pub fn sync_one_crate_entry(
     path: &Path,
     source: Option<&str>,
@@ -69,8 +73,8 @@ pub fn sync_one_crate_entry(
     )
 }
 
-// Sync the crates.io-index repository
-pub fn sync_crates_repo(path: &Path, crates: &CratesSection) {
+/// Sync the crates.io-index repository
+pub fn sync_crates_repo(path: &Path, crates: &CratesSection) -> Result<(), SyncError> {
     let repo_path = path.join("crates.io-index");
 
     let prefix = format!("{} Syncing crates.io-index...  ", style("[1/3]").bold());
@@ -82,7 +86,7 @@ pub fn sync_crates_repo(path: &Path, crates: &CratesSection) {
                 p.indexed_objects(),
                 p.total_objects(),
             ))
-            .unwrap();
+            .expect("Channel send should not fail");
         true
     });
     let mut fetch_options = FetchOptions::new();
@@ -91,29 +95,31 @@ pub fn sync_crates_repo(path: &Path, crates: &CratesSection) {
     let repo = if !repo_path.join(".git").exists() {
         let mut init_opts = RepositoryInitOptions::new();
         init_opts.origin_url(&crates.source_index);
-        Repository::init_opts(repo_path, &init_opts).unwrap()
+        Repository::init_opts(repo_path, &init_opts)?
     } else {
-        Repository::open(repo_path).unwrap()
+        Repository::open(repo_path)?
     };
-    repo.find_remote("origin")
-        .unwrap()
-        .fetch(&["master"], Some(&mut fetch_options), None)
-        .unwrap();
-    sender.send(ProgressBarMessage::Done).unwrap();
-    pb_thread.join().unwrap();
+    repo.find_remote("origin")?
+        .fetch(&["master"], Some(&mut fetch_options), None)?;
+    sender.send(ProgressBarMessage::Done).expect("Channel send should not fail");
+    pb_thread.join().expect("Thread join should not fail");
+
+    Ok(())
 }
 
+/// Synchronize the crate files themselves, using the index for a list of files.
+// TODO: There are still many unwraps in the foreach sections. This needs to be fixed.
 pub fn sync_crates_files(
     path: &Path,
     mirror: &MirrorSection,
     crates: &CratesSection,
     user_agent: &HeaderValue,
-) {
+) -> Result<(), SyncError> {
     let prefix = format!("{} Syncing crates files...     ", style("[2/3]").bold());
 
     // For now, assume successful crates.io-index download
     let repo_path = path.join("crates.io-index");
-    let repo = Repository::open(repo_path).unwrap();
+    let repo = Repository::open(repo_path)?;
 
     // Set the crates.io URL, or None if default
     let crates_source = if crates.source == "https://crates.io/api/v1/crates" {
@@ -123,18 +129,17 @@ pub fn sync_crates_files(
     };
 
     // Find References for origin/master and master (if it exists)
-    let origin_master = repo.find_reference("refs/remotes/origin/master").unwrap();
+    let origin_master = repo.find_reference("refs/remotes/origin/master")?;
     let master = repo.find_reference("refs/heads/master").ok();
 
     // Diff between the two references, or find all files if master doesn't exist
-    let origin_tree = origin_master.peel_to_tree().unwrap();
+    let origin_tree = origin_master.peel_to_tree()?;
     let diff = if let Some(master) = master {
-        let master_tree = master.peel_to_tree().unwrap();
+        let master_tree = master.peel_to_tree()?;
         repo.diff_tree_to_tree(Some(&master_tree), Some(&origin_tree), None)
     } else {
         repo.diff_tree_to_tree(None, Some(&origin_tree), None)
-    }
-    .unwrap();
+    }?;
 
     // Run one pass to figure out a total count
     let mut count = 0;
@@ -154,8 +159,7 @@ pub fn sync_crates_files(
         None,
         None,
         None,
-    )
-    .unwrap();
+    )?;
 
     let (pb_thread, sender) = progress_bar(Some(count), prefix);
 
@@ -191,7 +195,7 @@ pub fn sync_crates_files(
                                     "Downloading {} {} failed: {:?}",
                                     &c.name, &c.vers, e
                                 )))
-                                .unwrap();
+                                .expect("Channel send should not fail");
                             }
                         }
                         &s.send(ProgressBarMessage::Increment);
@@ -203,13 +207,15 @@ pub fn sync_crates_files(
             None,
             None,
             None,
-        )
-        .unwrap();
+        ).unwrap();
     });
 
-    pb_thread.join().unwrap();
+    pb_thread.join().expect("Thread join should not fail");
+
+    Ok(())
 }
 
+/// Synchronize crates.io mirror.
 pub fn sync(
     path: &Path,
     mirror: &MirrorSection,
