@@ -224,9 +224,15 @@ pub fn sync(
 ) -> Result<(), MirrorError> {
     eprintln!("{}", style("Syncing Crates repositories...").bold());
 
-    sync_crates_repo(path, crates);
+    if let Err(e) = sync_crates_repo(path, crates) {
+        eprintln!("Downloading crates.io-index repository failed: {:?}", e);
+        eprintln!("You will need to sync again to finish this download.");
+    }
 
-    sync_crates_files(path, mirror, crates, user_agent);
+    if let Err(e) = sync_crates_files(path, mirror, crates, user_agent) {
+        eprintln!("Downloading crates failed: {:?}", e);
+        eprintln!("You will need to sync again to finish this download.");
+    }
 
     if let Some(_base_url) = &mirror.base_url {
         eprintln!("{} Merging crates.io-index...  ", style("[3/3]").bold());
