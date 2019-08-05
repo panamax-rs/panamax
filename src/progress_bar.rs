@@ -11,10 +11,12 @@ pub enum ProgressBarMessage {
     Println(String),
 }
 
-pub fn progress_bar(count: Option<usize>, prefix: String) -> (JoinHandle<()>, Sender<ProgressBarMessage>) {
+pub fn progress_bar(
+    count: Option<usize>,
+    prefix: String,
+) -> (JoinHandle<()>, Sender<ProgressBarMessage>) {
     let (sender, receiver) = mpsc::channel();
     let pb_thread = thread::spawn(move || {
-
         let pb = if let Some(count) = count {
             ProgressBar::new(count as u64)
         } else {

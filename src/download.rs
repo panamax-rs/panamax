@@ -24,7 +24,13 @@ thread_local!(static CLIENT: Client = Client::new());
 
 /// Download a URL and return it as a string.
 fn download_string(from: &str, user_agent: &HeaderValue) -> Result<String, DownloadError> {
-    Ok(CLIENT.with(|client| client.get(from).header(USER_AGENT, user_agent).send()?.text())?)
+    Ok(CLIENT.with(|client| {
+        client
+            .get(from)
+            .header(USER_AGENT, user_agent)
+            .send()?
+            .text()
+    })?)
 }
 
 /// Append a string to a path.
@@ -99,13 +105,13 @@ fn one_download(
                 let text = http_res.text()?;
                 fs::write(
                     forbidden_path,
-                    format!(
-                        "Server returned {}: {}",
-                        status,
-                        &text
-                    ),
+                    format!("Server returned {}: {}", status, &text),
                 )?;
-                return Err(DownloadError::NotFound(status.as_u16(), url.to_string(), text));
+                return Err(DownloadError::NotFound(
+                    status.as_u16(),
+                    url.to_string(),
+                    text,
+                ));
             }
             loop {
                 let byte_count = http_res.read(&mut buf)?;

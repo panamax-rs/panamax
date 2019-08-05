@@ -1,9 +1,9 @@
 use std::path::Path;
 use std::{fs, io};
 
+use console::style;
 use reqwest::header::HeaderValue;
 use serde_derive::{Deserialize, Serialize};
-use console::style;
 
 quick_error! {
     #[derive(Debug)]
@@ -78,7 +78,6 @@ pub fn load_mirror_toml(path: &Path) -> Result<Mirror, MirrorError> {
     )?)?)
 }
 
-
 pub fn init(path: &Path) -> Result<(), MirrorError> {
     create_mirror_directories(path)?;
     if create_mirror_toml(path)? {
@@ -97,7 +96,9 @@ pub fn init(path: &Path) -> Result<(), MirrorError> {
 
 pub fn default_user_agent() -> String {
     eprintln!("{}", style("No contact information was provided!").bold());
-    eprintln!("As per the crates.io crawling policy, lacking this may cause your IP to be blocked.");
+    eprintln!(
+        "As per the crates.io crawling policy, lacking this may cause your IP to be blocked."
+    );
     eprintln!("Please set this in your mirror.toml.");
     eprintln!();
     format!(

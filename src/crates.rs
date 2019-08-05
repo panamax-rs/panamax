@@ -101,7 +101,9 @@ pub fn sync_crates_repo(path: &Path, crates: &CratesSection) -> Result<(), SyncE
     };
     repo.find_remote("origin")?
         .fetch(&["master"], Some(&mut fetch_options), None)?;
-    sender.send(ProgressBarMessage::Done).expect("Channel send should not fail");
+    sender
+        .send(ProgressBarMessage::Done)
+        .expect("Channel send should not fail");
     pb_thread.join().expect("Thread join should not fail");
 
     Ok(())
@@ -207,13 +209,16 @@ pub fn sync_crates_files(
             None,
             None,
             None,
-        ).unwrap();
+        )
+        .unwrap();
     });
 
     pb_thread.join().expect("Thread join should not fail");
 
     Ok(())
 }
+
+pub fn merge_crates_repo(path: &Path, mirror: &MirrorSection) -> Result<(), SyncError> {}
 
 /// Synchronize crates.io mirror.
 pub fn sync(
