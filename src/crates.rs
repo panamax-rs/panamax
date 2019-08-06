@@ -15,7 +15,8 @@ use std::path::Path;
 static DEFAULT_CONFIG_JSON_CONTENT: &'static [u8] = br#"{
   "dl": "https://crates.io/api/v1/crates",
   "api": "https://crates.io"
-}"#;
+}
+"#;
 
 quick_error! {
     #[derive(Debug)]
