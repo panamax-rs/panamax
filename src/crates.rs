@@ -12,6 +12,11 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, BufRead, Cursor};
 use std::path::Path;
 
+static DEFAULT_CONFIG_JSON_CONTENT: &'static [u8] = br#"{
+  "dl": "https://crates.io/api/v1/crates",
+  "api": "https://crates.io"
+}"#;
+
 quick_error! {
     #[derive(Debug)]
     pub enum SyncError {
@@ -391,12 +396,8 @@ pub fn merge_crates_repo(path: &Path, crates: &CratesSection) -> Result<(), Sync
         }
     } else {
         // This section is useful in case the user removes base_url after the fact.
-        let content = br#"{
-  "dl": "https://crates.io/api/v1/crates",
-  "api": "https://crates.io"
-}"#;
-        if !is_config_json_up_to_date(&repo, &master_tree, content)? {
-            commit_new_config_json(&repo, &master, &origin_master_tree, &signature, content)?;
+        if !is_config_json_up_to_date(&repo, &master_tree, DEFAULT_CONFIG_JSON_CONTENT)? {
+            commit_new_config_json(&repo, &master, &origin_master_tree, &signature, DEFAULT_CONFIG_JSON_CONTENT)?;
         }
     }
 
