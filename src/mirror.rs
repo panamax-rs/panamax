@@ -21,7 +21,6 @@ quick_error! {
 pub struct MirrorSection {
     pub retries: usize,
     pub contact: Option<String>,
-    pub base_url: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -40,6 +39,7 @@ pub struct CratesSection {
     pub download_threads: usize,
     pub source: String,
     pub source_index: String,
+    pub base_url: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
