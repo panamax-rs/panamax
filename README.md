@@ -1,6 +1,6 @@
 # Panamax
 
-Panamax is a tool to mirror the `rustup` and crates.io repositories, for offline usage of Rust and `cargo`.
+Panamax is a tool to mirror the Rust and crates.io repositories, for offline usage of `rustup` and `cargo`.
 
 ## Installation
 
