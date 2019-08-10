@@ -1,5 +1,7 @@
 # Panamax
 
+[![crates.io](https://img.shields.io/crates/v/panamax.svg)](https://crates.io/crates/panamax)
+
 Panamax is a tool to mirror the Rust and crates.io repositories, for offline usage of `rustup` and `cargo`.
 
 ## Installation
