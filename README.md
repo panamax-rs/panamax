@@ -70,9 +70,7 @@ Additionally, this mirror can continually by synchronized in the future - one re
 
 Panamax grabs the files needed to make a full mirror, however once the mirror directory is at its destination, it needs to be hosted as a server. Panamax doesn't provide this, however it should be fairly simple to host a mirror - everything can be accessed via HTTP, with the exception of the `crates.io-index` which uses git.
 
-A sample `nginx` configuration file, `mirror.nginx.conf` has been provided in the repository which will handle hosting a mirror server. Use this in the `sites-available` nginx directory, or copy it into `nginx.conf`.
-
-* TODO: create example nginx file *
+A sample `nginx` configuration file, `nginx.sample.conf` has been provided in the repository which will handle hosting a mirror server. Use this in the `sites-available` nginx directory, or copy it into `nginx.conf`.
 
 ## Configuring `rustup` and `cargo`
 
