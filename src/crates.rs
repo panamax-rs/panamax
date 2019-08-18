@@ -226,6 +226,9 @@ pub fn sync_crates_files(
         .unwrap();
     });
 
+    sender
+        .send(ProgressBarMessage::Done)
+        .expect("Channel send should not fail");
     pb_thread.join().expect("Thread join should not fail");
 
     Ok(())
