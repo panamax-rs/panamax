@@ -153,6 +153,9 @@ pub fn sync_rustup_init(
         }
     });
 
+    sender
+        .send(ProgressBarMessage::Done)
+        .expect("Channel send should not fail");
     pb_thread.join().expect("Thread join should not fail");
 
     let errors = errors_occurred.load(Ordering::Acquire);
@@ -337,26 +340,23 @@ pub fn clean_old_files(
     // Progress bar!
     let (pb_thread, sender) = progress_bar(Some(files_to_delete.len()), prefix);
 
-    if files_to_delete.len() == 0 {
-        sender
-            .send(ProgressBarMessage::Done)
-            .expect("Channel send should not fail");
-    } else {
-        for f in files_to_delete {
-            if let Err(e) = fs::remove_file(path.join(&f)) {
-                sender
-                    .send(ProgressBarMessage::Println(format!(
-                        "Could not remove file {}: {:?}",
-                        f, e
-                    )))
-                    .expect("Channel send should not fail");
-            }
+    for f in files_to_delete {
+        if let Err(e) = fs::remove_file(path.join(&f)) {
             sender
-                .send(ProgressBarMessage::Increment)
+                .send(ProgressBarMessage::Println(format!(
+                    "Could not remove file {}: {:?}",
+                    f, e
+                )))
                 .expect("Channel send should not fail");
         }
+        sender
+            .send(ProgressBarMessage::Increment)
+            .expect("Channel send should not fail");
     }
 
+    sender
+        .send(ProgressBarMessage::Done)
+        .expect("Channel send should not fail");
     pb_thread.join().expect("Thread join should not fail");
 
     Ok(())
@@ -458,6 +458,9 @@ pub fn sync_rustup_channel(
     });
 
     // Wait for progress bar to finish
+    sender
+        .send(ProgressBarMessage::Done)
+        .expect("Channel send should not fail");
     pb_thread.join().expect("Thread join should not fail");
 
     let errors = errors_occurred.load(Ordering::Acquire);

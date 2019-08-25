@@ -11,6 +11,12 @@ pub enum ProgressBarMessage {
     Println(String),
 }
 
+/// Creates a progress bar thread that can receive `ProgressBarMessage`s
+///
+/// A message of `ProgressBarMessage::Done` must be sent before calling the `JoinHandle`,
+/// otherwise the thread will hang indefinitely.
+///
+/// Sending `ProgressBarMessage::Increment` more times than the `count` will not cause any issues.
 pub fn progress_bar(
     count: Option<usize>,
     prefix: String,
@@ -30,15 +36,7 @@ pub fn progress_bar(
         pb.set_prefix(&prefix);
         pb.enable_steady_tick(500);
         pb.tick();
-        let mut progress = 0;
         loop {
-            if let Some(count) = count {
-                if count > 0 && progress == count {
-                    break;
-                } else {
-                    progress += 1;
-                }
-            }
             match receiver.recv() {
                 Ok(ProgressBarMessage::Increment) => pb.inc(1),
                 Ok(ProgressBarMessage::Println(s)) => pb.println(s),
