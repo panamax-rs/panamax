@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, BufRead, Cursor};
 use std::path::Path;
 
-static DEFAULT_CONFIG_JSON_CONTENT: &'static [u8] = br#"{
+static DEFAULT_CONFIG_JSON_CONTENT: &[u8] = br#"{
   "dl": "https://crates.io/api/v1/crates",
   "api": "https://crates.io"
 }
@@ -94,7 +94,7 @@ pub fn sync_crates_repo(path: &Path, crates: &CratesSection) -> Result<(), SyncE
     let (pb_thread, sender) = progress_bar(None, prefix);
     let mut remote_callbacks = RemoteCallbacks::new();
     remote_callbacks.transfer_progress(|p| {
-        &sender
+        sender
             .send(ProgressBarMessage::SetProgress(
                 p.indexed_objects(),
                 p.total_objects(),
@@ -213,7 +213,7 @@ pub fn sync_crates_files(
                                 .expect("Channel send should not fail");
                             }
                         }
-                        &s.send(ProgressBarMessage::Increment);
+                        s.send(ProgressBarMessage::Increment).expect("progress bar increment error");
                     });
                 }
 
@@ -312,7 +312,7 @@ pub fn create_master_branch(repo: &Repository, origin_master: &Reference) -> Res
         let b = repo.branch("master", &origin_commit, true)?;
         b.into_reference().set_target(origin_target, "")?;
     } else {
-        Err(SyncError::GitTargetNotFound)?;
+        return Err(SyncError::GitTargetNotFound);
     }
 
     Ok(())
@@ -401,7 +401,13 @@ pub fn merge_crates_repo(path: &Path, crates: &CratesSection) -> Result<(), Sync
     } else {
         // This section is useful in case the user removes base_url after the fact.
         if !is_config_json_up_to_date(&repo, &master_tree, DEFAULT_CONFIG_JSON_CONTENT)? {
-            commit_new_config_json(&repo, &master, &origin_master_tree, &signature, DEFAULT_CONFIG_JSON_CONTENT)?;
+            commit_new_config_json(
+                &repo,
+                &master,
+                &origin_master_tree,
+                &signature,
+                DEFAULT_CONFIG_JSON_CONTENT,
+            )?;
         }
     }
 
