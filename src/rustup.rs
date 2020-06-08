@@ -16,7 +16,7 @@ use std::{fs, io};
 // Note: These platforms should match https://github.com/rust-lang/rustup.rs#other-installation-methods
 
 /// Non-windows platforms
-static PLATFORMS: &'static [&'static str] = &[
+static PLATFORMS: &[&str] = &[
     "aarch64-linux-android",
     "aarch64-unknown-linux-gnu",
     "arm-linux-androideabi",
@@ -44,7 +44,7 @@ static PLATFORMS: &'static [&'static str] = &[
 ];
 
 /// Windows platforms (platforms where rustup-init has a .exe extension)
-static PLATFORMS_EXE: &'static [&'static str] = &[
+static PLATFORMS_EXE: &[&str] = &[
     "i686-pc-windows-gnu",
     "i686-pc-windows-msvc",
     "x86_64-pc-windows-gnu",
@@ -201,7 +201,7 @@ pub fn rustup_download_list(
     path: &Path,
     source: &str,
 ) -> Result<(String, Vec<(String, String)>), SyncError> {
-    let channel_str = fs::read_to_string(path).map_err(|e| DownloadError::Io(e))?;
+    let channel_str = fs::read_to_string(path).map_err(DownloadError::Io)?;
     let channel: Channel = toml::from_str(&channel_str)?;
 
     Ok((
@@ -220,7 +220,7 @@ pub fn rustup_download_list(
                             .flatten()
                             .map(|(url, hash)| {
                                 (
-                                    url[source.len()..].trim_start_matches("/").to_string(),
+                                    url[source.len()..].trim_start_matches('/').to_string(),
                                     hash,
                                 )
                             })
@@ -378,7 +378,7 @@ pub fn add_to_channel_history(
     path: &Path,
     channel: &str,
     date: &str,
-    files: &Vec<(String, String)>,
+    files: &[(String, String)],
 ) -> Result<(), SyncError> {
     let mut channel_history = get_channel_history(path, channel)?;
     channel_history.versions.insert(
