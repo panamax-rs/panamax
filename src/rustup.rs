@@ -39,7 +39,7 @@ static PLATFORMS: &[&str] = &[
     "x86_64-linux-android",
     "x86_64-unknown-freebsd",
     "x86_64-unknown-linux-gnu",
-    // "x86_64-unknown-linux-musl", // No .sha256 file, so disable rustup-init for this platform
+    "x86_64-unknown-linux-musl",
     "x86_64-unknown-netbsd",
 ];
 
