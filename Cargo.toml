@@ -1,6 +1,6 @@
 [package]
 name = "panamax"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["k3d3 <k@3d3.ca>"]
 description = "Mirror rustup and crates.io repositories, for offline Rust and Cargo usage."
 license = "MIT/Apache-2.0"
