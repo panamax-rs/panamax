@@ -13,7 +13,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{fs, io};
 
-// Note: These platforms should match https://github.com/rust-lang/rustup.rs#other-installation-methods
+// Note: These platforms should match the list on https://rust-lang.github.io/rustup/installation/other.html
 
 /// Non-windows platforms
 static PLATFORMS: &[&str] = &[
