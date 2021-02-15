@@ -86,6 +86,31 @@ pub fn move_if_exists_with_sha256(from: &Path, to: &Path) -> Result<(), Download
     Ok(())
 }
 
+/// Copy a file and its .sha256, creating `to`'s directory if it doesn't exist.
+/// Fails if the source .sha256 does not exist.
+pub fn copy_file_create_dir_with_sha256(from: &Path, to: &Path) -> Result<(), DownloadError> {
+    let sha256_from_path = append_to_path(from, ".sha256");
+    let sha256_to_path = append_to_path(to, ".sha256");
+    copy_file_create_dir(&sha256_from_path, &sha256_to_path)?;
+    copy_file_create_dir(from, to)?;
+    Ok(())
+}
+
+/// Copy a file, creating `to`'s directory if it doesn't exist.
+pub fn copy_file_create_dir(from: &Path, to: &Path) -> Result<(), DownloadError> {
+    if to.exists() {
+        return Ok(())
+    }
+    if let Some(parent) = to.parent() {
+        if !parent.exists() {
+            fs::create_dir_all(parent)?;
+        }
+    }
+
+    fs::copy(from, to)?;
+    Ok(())
+}
+
 fn one_download(
     url: &str,
     path: &Path,
