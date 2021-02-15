@@ -1,8 +1,8 @@
 # This is a Panamax mirror. It is a self-contained directory made to be easily copied
-# to an air-gapped network or machine via rsync, USB, or another method.
+# to an offline network or machine via rsync, USB, or another method.
 
 # While Panamax handles grabbing files from the Internet, it does not handle hosting
-# on the air-gapped side. Since everything in the mirror is static, it should be
+# on the offline. Since everything in the mirror is static, it should be
 # fairly easily hosted using nginx, and git for the crates.io-index mirror.
 
 [mirror]
