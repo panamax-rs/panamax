@@ -82,13 +82,15 @@ pub fn sync_one_init(
     retries: usize,
     user_agent: &HeaderValue,
 ) -> Result<(), DownloadError> {
-    let local_path = if is_exe {
-        path.join("rustup/dist")
-            .join(platform)
-            .join("rustup-init.exe")
-    } else {
-        path.join("rustup/dist").join(platform).join("rustup-init")
-    };
+
+    let local_path = path.join("rustup/dist")
+    .join(platform)
+    .join(if is_exe {
+            "rustup-init.exe"
+        } else {
+            "rustup-init"
+        }
+    );
 
     let source_url = if is_exe {
         format!("{}/rustup/dist/{}/rustup-init.exe", source, platform)
