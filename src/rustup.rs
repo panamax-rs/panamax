@@ -1,5 +1,8 @@
-use crate::download::{DownloadError, append_to_path, copy_file_create_dir_with_sha256, download, download_with_sha256_file, move_if_exists, move_if_exists_with_sha256, write_file_create_dir};
-use crate::mirror::{MirrorError, MirrorSection, RustupSection};
+use crate::download::{
+    append_to_path, copy_file_create_dir_with_sha256, download, download_with_sha256_file,
+    move_if_exists, move_if_exists_with_sha256, write_file_create_dir, DownloadError,
+};
+use crate::mirror::{ConfigMirror, ConfigRustup, MirrorError};
 use crate::progress_bar::{progress_bar, ProgressBarMessage};
 use console::style;
 use reqwest::header::HeaderValue;
@@ -117,26 +120,22 @@ pub fn sync_one_init(
     retries: usize,
     user_agent: &HeaderValue,
 ) -> Result<(), DownloadError> {
-
-    let local_path = path.join("rustup")
-    .join("archive")
-    .join(rustup_version)
-    .join(platform)
-    .join(if is_exe {
+    let local_path = path
+        .join("rustup")
+        .join("archive")
+        .join(rustup_version)
+        .join(platform)
+        .join(if is_exe {
             "rustup-init.exe"
         } else {
             "rustup-init"
-        }
-    );
+        });
 
-    let archive_path = path.join("rustup/dist")
-    .join(platform)
-    .join(if is_exe {
-            "rustup-init.exe"
-        } else {
-            "rustup-init"
-        }
-    );
+    let archive_path = path.join("rustup/dist").join(platform).join(if is_exe {
+        "rustup-init.exe"
+    } else {
+        "rustup-init"
+    });
 
     let source_url = if is_exe {
         format!("{}/rustup/dist/{}/rustup-init.exe", source, platform)
@@ -166,7 +165,6 @@ pub fn sync_rustup_init(
 
     let errors_occurred = AtomicUsize::new(0);
 
-
     // Download rustup release file
     let release_url = format!("{}/rustup/release-stable.toml", source);
     let release_path = path.join("rustup/release-stable.toml");
@@ -191,7 +189,15 @@ pub fn sync_rustup_init(
             let s = sender.clone();
             let rustup_version = rustup_version.clone();
             scoped.execute(move || {
-                if let Err(e) = sync_one_init(path, source, platform, false, &rustup_version, retries, user_agent) {
+                if let Err(e) = sync_one_init(
+                    path,
+                    source,
+                    platform,
+                    false,
+                    &rustup_version,
+                    retries,
+                    user_agent,
+                ) {
                     s.send(ProgressBarMessage::Println(format!(
                         "Downloading {} failed: {:?}",
                         path.display(),
@@ -209,7 +215,15 @@ pub fn sync_rustup_init(
             let s = sender.clone();
             let rustup_version = rustup_version.clone();
             scoped.execute(move || {
-                if let Err(e) = sync_one_init(path, source, platform, true, &rustup_version, retries, user_agent) {
+                if let Err(e) = sync_one_init(
+                    path,
+                    source,
+                    platform,
+                    true,
+                    &rustup_version,
+                    retries,
+                    user_agent,
+                ) {
                     s.send(ProgressBarMessage::Println(format!(
                         "Downloading {} failed: {:?}",
                         path.display(),
@@ -508,8 +522,8 @@ pub fn sync_rustup_channel(
 /// Synchronize rustup.
 pub fn sync(
     path: &Path,
-    mirror: &MirrorSection,
-    rustup: &RustupSection,
+    mirror: &ConfigMirror,
+    rustup: &ConfigRustup,
     user_agent: &HeaderValue,
 ) -> Result<(), MirrorError> {
     eprintln!("{}", style("Syncing Rustup repositories...").bold());

@@ -99,7 +99,7 @@ pub fn copy_file_create_dir_with_sha256(from: &Path, to: &Path) -> Result<(), Do
 /// Copy a file, creating `to`'s directory if it doesn't exist.
 pub fn copy_file_create_dir(from: &Path, to: &Path) -> Result<(), DownloadError> {
     if to.exists() {
-        return Ok(())
+        return Ok(());
     }
     if let Some(parent) = to.parent() {
         if !parent.exists() {
