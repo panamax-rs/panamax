@@ -28,6 +28,8 @@ pub struct RustupSection {
     pub sync: bool,
     pub download_threads: usize,
     pub source: String,
+    pub platforms: Vec<String>,
+    pub platforms_exe: Vec<String>,
     pub keep_latest_stables: Option<usize>,
     pub keep_latest_betas: Option<usize>,
     pub keep_latest_nightlies: Option<usize>,

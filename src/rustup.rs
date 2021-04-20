@@ -10,44 +10,6 @@ use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{fs, io};
 
-// Note: These platforms should match the list on https://rust-lang.github.io/rustup/installation/other.html
-
-/// Non-windows platforms
-static PLATFORMS: &[&str] = &[
-    "aarch64-linux-android",
-    "aarch64-unknown-linux-gnu",
-    "arm-linux-androideabi",
-    "arm-unknown-linux-gnueabi",
-    "arm-unknown-linux-gnueabihf",
-    "armv7-linux-androideabi",
-    "armv7-unknown-linux-gnueabihf",
-    "i686-apple-darwin",
-    "i686-linux-android",
-    "i686-unknown-linux-gnu",
-    "mips-unknown-linux-gnu",
-    "mips64-unknown-linux-gnuabi64",
-    "mips64el-unknown-linux-gnuabi64",
-    "mipsel-unknown-linux-gnu",
-    "powerpc-unknown-linux-gnu",
-    "powerpc64-unknown-linux-gnu",
-    "powerpc64le-unknown-linux-gnu",
-    "s390x-unknown-linux-gnu",
-    "x86_64-apple-darwin",
-    "x86_64-linux-android",
-    "x86_64-unknown-freebsd",
-    "x86_64-unknown-linux-gnu",
-    "x86_64-unknown-linux-musl",
-    "x86_64-unknown-netbsd",
-];
-
-/// Windows platforms (platforms where rustup-init has a .exe extension)
-static PLATFORMS_EXE: &[&str] = &[
-    "i686-pc-windows-gnu",
-    "i686-pc-windows-msvc",
-    "x86_64-pc-windows-gnu",
-    "x86_64-pc-windows-msvc",
-];
-
 quick_error! {
     #[derive(Debug)]
     pub enum SyncError {
@@ -159,8 +121,10 @@ pub fn sync_rustup_init(
     threads: usize,
     retries: usize,
     user_agent: &HeaderValue,
+    platforms: &Vec<String>,
+    platforms_exe: &Vec<String>,
 ) -> Result<(), SyncError> {
-    let count = PLATFORMS.len() + PLATFORMS_EXE.len();
+    let count = platforms.len() + platforms_exe.len();
 
     let (pb_thread, sender) = progress_bar(Some(count), prefix);
 
@@ -187,7 +151,7 @@ pub fn sync_rustup_init(
 
     Pool::new(threads as u32).scoped(|scoped| {
         let error_occurred = &errors_occurred;
-        for platform in PLATFORMS {
+        for platform in platforms {
             let s = sender.clone();
             let rustup_version = rustup_version.clone();
             scoped.execute(move || {
@@ -205,7 +169,7 @@ pub fn sync_rustup_init(
             })
         }
 
-        for platform in PLATFORMS_EXE {
+        for platform in platforms_exe {
             let s = sender.clone();
             let rustup_version = rustup_version.clone();
             scoped.execute(move || {
@@ -523,6 +487,8 @@ pub fn sync(
         rustup.download_threads,
         mirror.retries,
         user_agent,
+        &rustup.platforms,
+        &rustup.platforms_exe,
     ) {
         eprintln!("Downloading rustup init files failed: {:?}", e);
         eprintln!("You will need to sync again to finish this download.");

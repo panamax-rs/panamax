@@ -41,6 +41,45 @@ keep_latest_stables = 1
 keep_latest_betas = 1
 keep_latest_nightlies = 1
 
+# The platforms to include in the mirror
+# Note: These platforms should match the list on https://rust-lang.github.io/rustup/installation/other.html
+
+# Non-windows platforms
+platforms = [
+    "aarch64-linux-android",
+    "aarch64-unknown-linux-gnu",
+    "arm-linux-androideabi",
+    "arm-unknown-linux-gnueabi",
+    "arm-unknown-linux-gnueabihf",
+    "armv7-linux-androideabi",
+    "armv7-unknown-linux-gnueabihf",
+    "i686-apple-darwin",
+    "i686-linux-android",
+    "i686-unknown-linux-gnu",
+    "mips-unknown-linux-gnu",
+    "mips64-unknown-linux-gnuabi64",
+    "mips64el-unknown-linux-gnuabi64",
+    "mipsel-unknown-linux-gnu",
+    "powerpc-unknown-linux-gnu",
+    "powerpc64-unknown-linux-gnu",
+    "powerpc64le-unknown-linux-gnu",
+    "s390x-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "x86_64-linux-android",
+    "x86_64-unknown-freebsd",
+    "x86_64-unknown-linux-gnu",
+    "x86_64-unknown-linux-musl",
+    "x86_64-unknown-netbsd",
+]
+
+# Windows platforms
+platforms_exe = [
+    "i686-pc-windows-gnu",
+    "i686-pc-windows-msvc",
+    "x86_64-pc-windows-gnu",
+    "x86_64-pc-windows-msvc",
+]
+
 [crates]
 # These are the configuration parameters for the crates.io half of the mirror.
 # This will download the crates.io-index, as well as the crates themselves.
