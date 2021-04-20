@@ -205,6 +205,8 @@ pub fn sync_rustup_init(
 pub fn rustup_download_list(
     path: &Path,
     source: &str,
+    platforms: &Vec<String>,
+    platforms_exe: &Vec<String>,
 ) -> Result<(String, Vec<(String, String)>), SyncError> {
     let channel_str = fs::read_to_string(path).map_err(DownloadError::Io)?;
     let channel: Channel = toml::from_str(&channel_str)?;
@@ -217,6 +219,9 @@ pub fn rustup_download_list(
             .flat_map(|(_, pkg)| {
                 pkg.target
                     .into_iter()
+                    .filter(|(name, _)| {
+                        platforms.contains(&name) || platforms_exe.contains(&name)
+                    })
                     .flat_map(|(_, target)| -> Vec<(String, String)> {
                         target
                             .target_urls
@@ -414,6 +419,8 @@ pub fn sync_rustup_channel(
     channel: &str,
     retries: usize,
     user_agent: &HeaderValue,
+    platforms: &Vec<String>,
+    platforms_exe: &Vec<String>,
 ) -> Result<(), SyncError> {
     // Download channel file
     let channel_url = format!("{}/dist/channel-rust-{}.toml", source, channel);
@@ -422,7 +429,7 @@ pub fn sync_rustup_channel(
     download_with_sha256_file(&channel_url, &channel_part_path, retries, true, user_agent)?;
 
     // Open toml file, find all files to download
-    let (date, files) = rustup_download_list(&channel_part_path, source)?;
+    let (date, files) = rustup_download_list(&channel_part_path, source, &platforms, &platforms_exe)?;
 
     // Create progress bar
     let (pb_thread, sender) = progress_bar(Some(files.len()), prefix);
@@ -507,6 +514,8 @@ pub fn sync(
             "stable",
             mirror.retries,
             user_agent,
+            &rustup.platforms,
+            &rustup.platforms_exe,
         ) {
             failures = true;
             eprintln!("Downloading stable release failed: {:?}", e);
@@ -527,6 +536,8 @@ pub fn sync(
             "beta",
             mirror.retries,
             user_agent,
+            &rustup.platforms,
+            &rustup.platforms_exe,
         ) {
             failures = true;
             eprintln!("Downloading beta release failed: {:?}", e);
@@ -547,6 +558,8 @@ pub fn sync(
             "nightly",
             mirror.retries,
             user_agent,
+            &rustup.platforms,
+            &rustup.platforms_exe,
         ) {
             failures = true;
             eprintln!("Downloading nightly release failed: {:?}", e);
