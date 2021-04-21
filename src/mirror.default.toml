@@ -42,10 +42,11 @@ keep_latest_betas = 1
 keep_latest_nightlies = 1
 
 # The platforms to include in the mirror
+# These lists can be empty to mirror nothing, but if the setting is not set, it will default to all platforms.
 # Note: These platforms should match the list on https://rust-lang.github.io/rustup/installation/other.html
 
-# Non-windows platforms
-platforms = [
+# UNIX platforms
+platforms_unix = [
     "aarch64-linux-android",
     "aarch64-unknown-linux-gnu",
     "arm-linux-androideabi",
@@ -73,7 +74,7 @@ platforms = [
 ]
 
 # Windows platforms
-platforms_exe = [
+platforms_windows = [
     "i686-pc-windows-gnu",
     "i686-pc-windows-msvc",
     "x86_64-pc-windows-gnu",
