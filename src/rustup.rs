@@ -114,21 +114,49 @@ pub struct Platforms {
     windows: Vec<String>,
 }
 
-pub fn get_platforms(rustup: &RustupSection) -> Platforms {
+pub fn get_platforms(rustup: &RustupSection) -> Result<Platforms, MirrorError> {
     let unix = match &rustup.platforms_unix {
-        Some(p) => p.clone(),
-        None => PLATFORMS_UNIX.into_iter().map(|x| x.to_string()).collect(),
+        Some(p) => {
+            let bad_platforms: Vec<&String> = p
+                .iter()
+                .filter(|x| !PLATFORMS_UNIX.contains(&x.as_str()))
+                .collect();
+            if !bad_platforms.is_empty() {
+                eprintln!("Bad values in unix platforms: {:?}", bad_platforms);
+                return Err(MirrorError::Config(
+                    "bad value for 'platforms_unix'".to_string(),
+                ));
+            }
+            p.clone()
+        }
+        None => {
+            eprintln!("Info: no 'platforms_unix' specified in 'rustup' section of 'mirror.toml', mirroring all platforms.");
+            PLATFORMS_UNIX.into_iter().map(|x| x.to_string()).collect()
+        }
     };
     let windows = match &rustup.platforms_windows {
-        Some(p) => p.clone(),
+        Some(p) => {
+            let bad_platforms: Vec<&String> = p
+                .iter()
+                .filter(|x| !PLATFORMS_WINDOWS.contains(&x.as_str()))
+                .collect();
+            if !bad_platforms.is_empty() {
+                eprintln!("Bad values in windows platforms: {:?}", bad_platforms);
+                return Err(MirrorError::Config(
+                    "bad value for 'platforms_windows'".to_string(),
+                ));
+            }
+            p.clone()
+        }
         None => {
+            eprintln!("Info: no 'platforms_windows' specified in 'rustup' section of 'mirror.toml', mirroring all platforms.");
             PLATFORMS_WINDOWS
                 .into_iter()
                 .map(|x| x.to_string())
                 .collect()
-        }
+        },
     };
-    Platforms { unix, windows }
+    Ok(Platforms { unix, windows })
 }
 
 /// Synchronize one rustup-init file.
@@ -543,8 +571,7 @@ pub fn sync(
     user_agent: &HeaderValue,
 ) -> Result<(), MirrorError> {
 
-    let platforms = get_platforms(&rustup);
-    println!("platforms: {:#?}", platforms);
+    let platforms = get_platforms(&rustup)?;
 
     eprintln!("{}", style("Syncing Rustup repositories...").bold());
 

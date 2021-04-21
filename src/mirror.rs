@@ -14,6 +14,7 @@ quick_error! {
         Parse(err: toml::de::Error) {
             from()
         }
+        Config(err: String) {}
     }
 }
 
