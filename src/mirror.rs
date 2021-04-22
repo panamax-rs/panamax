@@ -14,6 +14,7 @@ quick_error! {
         Parse(err: toml::de::Error) {
             from()
         }
+        Config(err: String) {}
     }
 }
 
@@ -28,6 +29,8 @@ pub struct RustupSection {
     pub sync: bool,
     pub download_threads: usize,
     pub source: String,
+    pub platforms_unix: Option<Vec<String>>,
+    pub platforms_windows: Option<Vec<String>>,
     pub keep_latest_stables: Option<usize>,
     pub keep_latest_betas: Option<usize>,
     pub keep_latest_nightlies: Option<usize>,
