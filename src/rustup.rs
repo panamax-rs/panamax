@@ -350,7 +350,6 @@ pub fn sync_rustup_init(
 /// Get the rustup file downloads, in pairs of URLs and sha256 hashes.
 pub fn rustup_download_list(
     path: &Path,
-    source: &str,
     platforms: &Platforms,
 ) -> Result<(String, Vec<(String, String)>), SyncError> {
     let channel_str = fs::read_to_string(path).map_err(DownloadError::Io)?;
@@ -375,7 +374,7 @@ pub fn rustup_download_list(
                             .flatten()
                             .map(|(url, hash)| {
                                 (
-                                    url[source.len()..].trim_start_matches('/').to_string(),
+                                    url.split("/").collect::<Vec<&str>>()[3..].join("/"),
                                     hash,
                                 )
                             })
@@ -573,7 +572,7 @@ pub fn sync_rustup_channel(
     download_with_sha256_file(&channel_url, &channel_part_path, retries, true, user_agent)?;
 
     // Open toml file, find all files to download
-    let (date, files) = rustup_download_list(&channel_part_path, source, &platforms)?;
+    let (date, files) = rustup_download_list(&channel_part_path, &platforms)?;
 
     // Create progress bar
     let (pb_thread, sender) = progress_bar(Some(files.len()), prefix);
