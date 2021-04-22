@@ -13,38 +13,91 @@ use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{fs, io};
 
+// The allowed platforms to validate the configuration
 // Note: These platforms should match the list on https://rust-lang.github.io/rustup/installation/other.html
 
-/// Non-windows platforms
-static PLATFORMS: &[&str] = &[
+/// Unix platforms
+static PLATFORMS_UNIX: &[&str] = &[
+    "aarch64-fuschia",
     "aarch64-linux-android",
+    "aarch64-pc-windows-msvc",
+    "aarch64-unknown-hermit",
     "aarch64-unknown-linux-gnu",
+    "aarch64-unknown-none",
+    "aarch64-unknown-none-softfloat",
+    "aarch64-unknown-redox",
     "arm-linux-androideabi",
     "arm-unknown-linux-gnueabi",
     "arm-unknown-linux-gnueabihf",
+    "arm-unknown-linux-musleabi",
+    "arm-unknown-linux-musleabihf",
+    "armebv7r-none-eabi",
+    "armebv7r-none-eabihf",
+    "armv5te-unknown-linux-gnueabi",
+    "armv5te-unknown-linux-musleabi",
+    "armv7-apple-ios",
     "armv7-linux-androideabi",
+    "armv7-unknown-linux-gnueabi",
     "armv7-unknown-linux-gnueabihf",
+    "armv7s-apple-ios",
+    "asmjs-unknown-emscripten",
+    "i386-apple-ios",
+    "i586-pc-windows-msvc",
+    "i586-unknown-linux-gnu",
+    "i586-unknown-linux-musl",
     "i686-apple-darwin",
     "i686-linux-android",
+    "i686-unknown-freebsd",
     "i686-unknown-linux-gnu",
+    "i686-unknown-linux-musl",
     "mips-unknown-linux-gnu",
     "mips64-unknown-linux-gnuabi64",
+    "mips64-unknown-linux-muslabi64",
     "mips64el-unknown-linux-gnuabi64",
+    "mips64el-unknown-linux-muslabi64",
     "mipsel-unknown-linux-gnu",
+    "mipsisa32r6el-unknown-linux-gnu",
+    "mipsisa64r6-unknown-linux-gnuabi64",
+    "mipsisa64r6el-unknown-linux-gnuabi64",
+    "nvptx64-nvidia-cuda",
     "powerpc-unknown-linux-gnu",
     "powerpc64-unknown-linux-gnu",
     "powerpc64le-unknown-linux-gnu",
+    "riscv32gc-unknown-linux-gnu",
+    "riscv32i-unknown-none-elf",
+    "riscv32imac-unknown-none-elf",
+    "riscv32imc-unknown-none-elf",
+    "riscv64gc-unknown-none-elf",
+    "riscv64imac-unknown-none-elf",
     "s390x-unknown-linux-gnu",
+    "sparc64-unknown-linux-gnu",
+    "sparcv9-sun-solaris",
+    "thumbv6m-none-eabi",
+    "thumbv7em-none-eabi",
+    "thumbv7neon-linux-androideabi",
+    "thumbv7neon-unknown-linux-gnueabihf",
+    "wasm32-unknown-emscripten",
+    "wasm32-unknown-unknown",
+    "wasm32-wasi",
     "x86_64-apple-darwin",
+    "x86_64-apple-ios",
+    "x86_64-fortanix-unknown-sgx",
+    "x86_64-fuschia",
     "x86_64-linux-android",
+    "x86_64-pc-solaris",
+    "x86_64-rumprun-netbsd",
+    "x86_64-sun-solaris",
     "x86_64-unknown-freebsd",
     "x86_64-unknown-linux-gnu",
+    "x86_64-unknown-linux-gnux32",
     "x86_64-unknown-linux-musl",
     "x86_64-unknown-netbsd",
+    "x86_64-unknown-redox",
 ];
 
 /// Windows platforms (platforms where rustup-init has a .exe extension)
-static PLATFORMS_EXE: &[&str] = &[
+static PLATFORMS_WINDOWS: &[&str] = &[
+    "i586-pc-windows-msvc",
     "i686-pc-windows-gnu",
     "i686-pc-windows-msvc",
     "x86_64-pc-windows-gnu",
@@ -110,6 +163,57 @@ struct Release {
     version: String,
 }
 
+#[derive(Deserialize, Debug)]
+pub struct Platforms {
+    unix: Vec<String>,
+    windows: Vec<String>,
+}
+
+pub fn get_platforms(rustup: &ConfigRustup) -> Result<Platforms, MirrorError> {
+    let unix = match &rustup.platforms_unix {
+        Some(p) => {
+            let bad_platforms: Vec<&String> = p
+                .iter()
+                .filter(|x| !PLATFORMS_UNIX.contains(&x.as_str()))
+                .collect();
+            if !bad_platforms.is_empty() {
+                eprintln!("Bad values in unix platforms: {:?}", bad_platforms);
+                return Err(MirrorError::Config(
+                    "bad value for 'platforms_unix'".to_string(),
+                ));
+            }
+            p.clone()
+        }
+        None => {
+            eprintln!("Info: no 'platforms_unix' specified in 'rustup' section of 'mirror.toml', mirroring all platforms.");
+            PLATFORMS_UNIX.into_iter().map(|x| x.to_string()).collect()
+        }
+    };
+    let windows = match &rustup.platforms_windows {
+        Some(p) => {
+            let bad_platforms: Vec<&String> = p
+                .iter()
+                .filter(|x| !PLATFORMS_WINDOWS.contains(&x.as_str()))
+                .collect();
+            if !bad_platforms.is_empty() {
+                eprintln!("Bad values in windows platforms: {:?}", bad_platforms);
+                return Err(MirrorError::Config(
+                    "bad value for 'platforms_windows'".to_string(),
+                ));
+            }
+            p.clone()
+        }
+        None => {
+            eprintln!("Info: no 'platforms_windows' specified in 'rustup' section of 'mirror.toml', mirroring all platforms.");
+            PLATFORMS_WINDOWS
+                .into_iter()
+                .map(|x| x.to_string())
+                .collect()
+        },
+    };
+    Ok(Platforms { unix, windows })
+}
+
 /// Synchronize one rustup-init file.
 pub fn sync_one_init(
     path: &Path,
@@ -158,8 +262,9 @@ pub fn sync_rustup_init(
     threads: usize,
     retries: usize,
     user_agent: &HeaderValue,
+    platforms: &Platforms,
 ) -> Result<(), SyncError> {
-    let count = PLATFORMS.len() + PLATFORMS_EXE.len();
+    let count = platforms.unix.len() + platforms.windows.len();
 
     let (pb_thread, sender) = progress_bar(Some(count), prefix);
 
@@ -185,33 +290,30 @@ pub fn sync_rustup_init(
 
     Pool::new(threads as u32).scoped(|scoped| {
         let error_occurred = &errors_occurred;
-        for platform in PLATFORMS {
+        for platform in &platforms.unix {
             let s = sender.clone();
             let rustup_version = rustup_version.clone();
             scoped.execute(move || {
-                if let Err(e) = sync_one_init(
-                    path,
-                    source,
-                    platform,
-                    false,
-                    &rustup_version,
-                    retries,
-                    user_agent,
-                ) {
-                    s.send(ProgressBarMessage::Println(format!(
-                        "Downloading {} failed: {:?}",
-                        path.display(),
-                        e
-                    )))
-                    .expect("Channel send should not fail");
-                    error_occurred.fetch_add(1, Ordering::Release);
+                if let Err(e) = sync_one_init(path, source, platform.as_str(), false, &rustup_version, retries, user_agent) {
+                    match e {
+                        DownloadError::NotFound(_, _, _) => {}
+                        _ => {
+                            s.send(ProgressBarMessage::Println(format!(
+                                "Downloading {} failed: {:?}",
+                                path.display(),
+                                e
+                            )))
+                            .expect("Channel send should not fail");
+                            error_occurred.fetch_add(1, Ordering::Release);
+                        }
+                    }
                 }
                 s.send(ProgressBarMessage::Increment)
                     .expect("Channel send should not fail");
             })
         }
 
-        for platform in PLATFORMS_EXE {
+        for platform in &platforms.windows {
             let s = sender.clone();
             let rustup_version = rustup_version.clone();
             scoped.execute(move || {
@@ -224,13 +326,18 @@ pub fn sync_rustup_init(
                     retries,
                     user_agent,
                 ) {
-                    s.send(ProgressBarMessage::Println(format!(
-                        "Downloading {} failed: {:?}",
-                        path.display(),
-                        e
-                    )))
-                    .expect("Channel send should not fail");
-                    error_occurred.fetch_add(1, Ordering::Release);
+                    match e {
+                        DownloadError::NotFound(_, _, _) => {}
+                        _ => {
+                            s.send(ProgressBarMessage::Println(format!(
+                                "Downloading {} failed: {:?}",
+                                path.display(),
+                                e
+                            )))
+                            .expect("Channel send should not fail");
+                            error_occurred.fetch_add(1, Ordering::Release);
+                        }
+                    }
                 }
                 s.send(ProgressBarMessage::Increment)
                     .expect("Channel send should not fail");
@@ -254,7 +361,7 @@ pub fn sync_rustup_init(
 /// Get the rustup file downloads, in pairs of URLs and sha256 hashes.
 pub fn rustup_download_list(
     path: &Path,
-    source: &str,
+    platforms: &Platforms,
 ) -> Result<(String, Vec<(String, String)>), SyncError> {
     let channel_str = fs::read_to_string(path).map_err(DownloadError::Io)?;
     let channel: Channel = toml::from_str(&channel_str)?;
@@ -267,6 +374,9 @@ pub fn rustup_download_list(
             .flat_map(|(_, pkg)| {
                 pkg.target
                     .into_iter()
+                    .filter(|(name, _)| {
+                        platforms.unix.contains(&name) || platforms.windows.contains(&name)
+                    })
                     .flat_map(|(_, target)| -> Vec<(String, String)> {
                         target
                             .target_urls
@@ -275,7 +385,7 @@ pub fn rustup_download_list(
                             .flatten()
                             .map(|(url, hash)| {
                                 (
-                                    url[source.len()..].trim_start_matches('/').to_string(),
+                                    url.split("/").collect::<Vec<&str>>()[3..].join("/"),
                                     hash,
                                 )
                             })
@@ -464,6 +574,7 @@ pub fn sync_rustup_channel(
     channel: &str,
     retries: usize,
     user_agent: &HeaderValue,
+    platforms: &Platforms,
 ) -> Result<(), SyncError> {
     // Download channel file
     let channel_url = format!("{}/dist/channel-rust-{}.toml", source, channel);
@@ -472,7 +583,7 @@ pub fn sync_rustup_channel(
     download_with_sha256_file(&channel_url, &channel_part_path, retries, true, user_agent)?;
 
     // Open toml file, find all files to download
-    let (date, files) = rustup_download_list(&channel_part_path, source)?;
+    let (date, files) = rustup_download_list(&channel_part_path, &platforms)?;
 
     // Create progress bar
     let (pb_thread, sender) = progress_bar(Some(files.len()), prefix);
@@ -526,6 +637,9 @@ pub fn sync(
     rustup: &ConfigRustup,
     user_agent: &HeaderValue,
 ) -> Result<(), MirrorError> {
+
+    let platforms = get_platforms(&rustup)?;
+
     eprintln!("{}", style("Syncing Rustup repositories...").bold());
 
     // Mirror rustup-init
@@ -537,6 +651,7 @@ pub fn sync(
         rustup.download_threads,
         mirror.retries,
         user_agent,
+        &platforms,
     ) {
         eprintln!("Downloading rustup init files failed: {:?}", e);
         eprintln!("You will need to sync again to finish this download.");
@@ -555,6 +670,7 @@ pub fn sync(
             "stable",
             mirror.retries,
             user_agent,
+            &platforms,
         ) {
             failures = true;
             eprintln!("Downloading stable release failed: {:?}", e);
@@ -575,6 +691,7 @@ pub fn sync(
             "beta",
             mirror.retries,
             user_agent,
+            &platforms,
         ) {
             failures = true;
             eprintln!("Downloading beta release failed: {:?}", e);
@@ -595,6 +712,7 @@ pub fn sync(
             "nightly",
             mirror.retries,
             user_agent,
+            &platforms,
         ) {
             failures = true;
             eprintln!("Downloading nightly release failed: {:?}", e);
