@@ -245,13 +245,18 @@ pub fn sync_rustup_init(
             let rustup_version = rustup_version.clone();
             scoped.execute(move || {
                 if let Err(e) = sync_one_init(path, source, platform.as_str(), false, &rustup_version, retries, user_agent) {
-                    s.send(ProgressBarMessage::Println(format!(
-                        "Downloading {} failed: {:?}",
-                        path.display(),
-                        e
-                    )))
-                    .expect("Channel send should not fail");
-                    error_occurred.fetch_add(1, Ordering::Release);
+                    match e {
+                        DownloadError::NotFound(_, _, _) => {}
+                        _ => {
+                            s.send(ProgressBarMessage::Println(format!(
+                                "Downloading {} failed: {:?}",
+                                path.display(),
+                                e
+                            )))
+                            .expect("Channel send should not fail");
+                            error_occurred.fetch_add(1, Ordering::Release);
+                        }
+                    }
                 }
                 s.send(ProgressBarMessage::Increment)
                     .expect("Channel send should not fail");
