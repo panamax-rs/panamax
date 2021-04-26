@@ -14,7 +14,7 @@ The two main commands, `init` and `sync`, are handled in the `init()` and `sync(
 
 ### Crates
 
-The crates component is covered in `crates.rs`. This includes both functionality to download the crates.io-index git repository, as well as the crates files themselves.
+The crates component is split up into two files: `crates_index.rs` for handling the crates.io-index git repository, and `crates.rs` for the crates files themselves.
 
 ### Rustup
 

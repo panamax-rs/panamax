@@ -19,13 +19,13 @@ quick_error! {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct MirrorSection {
+pub struct ConfigMirror {
     pub retries: usize,
     pub contact: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct RustupSection {
+pub struct ConfigRustup {
     pub sync: bool,
     pub download_threads: usize,
     pub source: String,
@@ -37,7 +37,7 @@ pub struct RustupSection {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct CratesSection {
+pub struct ConfigCrates {
     pub sync: bool,
     pub download_threads: usize,
     pub source: String,
@@ -46,10 +46,10 @@ pub struct CratesSection {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Mirror {
-    pub mirror: MirrorSection,
-    pub rustup: Option<RustupSection>,
-    pub crates: Option<CratesSection>,
+pub struct Config {
+    pub mirror: ConfigMirror,
+    pub rustup: Option<ConfigRustup>,
+    pub crates: Option<ConfigCrates>,
 }
 
 pub fn create_mirror_directories(path: &Path) -> Result<(), io::Error> {
@@ -75,7 +75,7 @@ pub fn create_mirror_toml(path: &Path) -> Result<bool, io::Error> {
     Ok(true)
 }
 
-pub fn load_mirror_toml(path: &Path) -> Result<Mirror, MirrorError> {
+pub fn load_mirror_toml(path: &Path) -> Result<Config, MirrorError> {
     Ok(toml::from_str(&fs::read_to_string(
         path.join("mirror.toml"),
     )?)?)
@@ -132,6 +132,7 @@ pub fn sync(path: &Path) -> Result<(), MirrorError> {
         default_user_agent()
     };
 
+    // Set the user agent with contact information.
     let user_agent = match HeaderValue::from_str(&user_agent_str) {
         Ok(h) => h,
         Err(e) => {
@@ -154,7 +155,7 @@ pub fn sync(path: &Path) -> Result<(), MirrorError> {
 
     if let Some(crates) = mirror.crates {
         if crates.sync {
-            crate::crates::sync(path, &mirror.mirror, &crates, &user_agent)?;
+            sync_crates(path, &mirror.mirror, &crates, &user_agent);
         } else {
             eprintln!("Crates sync is disabled, skipping...");
         }
@@ -165,4 +166,33 @@ pub fn sync(path: &Path) -> Result<(), MirrorError> {
     eprintln!("Sync complete.");
 
     Ok(())
+}
+
+/// Synchronize and handle the crates.io-index repository.
+pub fn sync_crates(
+    path: &Path,
+    mirror: &ConfigMirror,
+    crates: &ConfigCrates,
+    user_agent: &HeaderValue,
+) {
+    eprintln!("{}", style("Syncing Crates repositories...").bold());
+
+    if let Err(e) = crate::crates_index::sync_crates_repo(path, crates) {
+        eprintln!("Downloading crates.io-index repository failed: {:?}", e);
+        eprintln!("You will need to sync again to finish this download.");
+        return;
+    }
+
+    if let Err(e) = crate::crates::sync_crates_files(path, mirror, crates, user_agent) {
+        eprintln!("Downloading crates failed: {:?}", e);
+        eprintln!("You will need to sync again to finish this download.");
+        return;
+    }
+
+    if let Err(e) = crate::crates_index::update_crates_config(path, crates) {
+        eprintln!("Updating crates.io-index config failed: {:?}", e);
+        eprintln!("You will need to sync again to finish this download.");
+    }
+
+    eprintln!("{}", style("Syncing Crates repositories complete!").bold());
 }

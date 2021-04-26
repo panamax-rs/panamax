@@ -5,6 +5,7 @@ use structopt::StructOpt;
 extern crate quick_error;
 
 mod crates;
+mod crates_index;
 mod download;
 mod mirror;
 mod progress_bar;
