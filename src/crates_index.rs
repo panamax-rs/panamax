@@ -139,7 +139,7 @@ fn clone_repository(
 }
 
 /// Fast-forward master, then rewrite the crates.io-index config.json.
-fn rewrite_config_json(repo_path: &Path, base_url: &str) -> Result<(), IndexSyncError> {
+pub fn rewrite_config_json(repo_path: &Path, base_url: &str) -> Result<(), IndexSyncError> {
     let repo = Repository::open(repo_path)?;
     let refname = "refs/heads/master";
     let signature = Signature::now("Panamax", "panamax@panamax")?;

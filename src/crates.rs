@@ -120,6 +120,10 @@ pub fn sync_crates_files(
                 return true;
             }
             let oid = df.id();
+            if oid.is_zero() {
+                // The crate was removed, continue to next crate
+                return true;
+            }
             let blob = repo.find_blob(oid).unwrap();
             let data = blob.content();
             count += Cursor::new(data).lines().count();
@@ -144,6 +148,10 @@ pub fn sync_crates_files(
 
                 // Get the data for this crate file
                 let oid = df.id();
+                if oid.is_zero() {
+                    // The crate was removed, continue to next crate
+                    return true;
+                }
                 let blob = repo.find_blob(oid).unwrap();
                 let data = blob.content();
 
