@@ -5,19 +5,18 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::{fs, io};
+use thiserror::Error;
 
-quick_error! {
-    #[derive(Debug)]
-    pub enum DownloadError {
-        Io(err: io::Error) {
-            from()
-        }
-        Download(err: reqwest::Error) {
-            from()
-        }
-        MismatchedHash(expected: String, actual: String) {}
-        NotFound(status: u16, url: String, data: String) {}
-    }
+#[derive(Error, Debug)]
+pub enum DownloadError {
+    #[error("IO error: {0}")]
+    Io(#[from]  io::Error),
+    #[error("HTTP download error: {0}")]
+    Download(#[from] reqwest::Error),
+    #[error("Mismatched hash - expected '{expected}', got '{actual}'")]
+    MismatchedHash{ expected: String, actual: String },
+    #[error("HTTP not found. Status: {status}, URL: {url}, data: {data}")]
+    NotFound{ status: u16, url: String, data: String },
 }
 
 thread_local!(static CLIENT: Client = Client::new());
@@ -132,11 +131,11 @@ fn one_download(
                     forbidden_path,
                     format!("Server returned {}: {}", status, &text),
                 )?;
-                return Err(DownloadError::NotFound(
-                    status.as_u16(),
-                    url.to_string(),
-                    text,
-                ));
+                return Err(DownloadError::NotFound{ 
+                    status: status.as_u16(),
+                    url: url.to_string(),
+                    data: text,
+                });
             }
             loop {
                 let byte_count = http_res.read(&mut buf)?;
@@ -159,7 +158,7 @@ fn one_download(
             } else {
                 let badsha_path = append_to_path(path, ".badsha256");
                 fs::write(badsha_path, &f_hash)?;
-                Err(DownloadError::MismatchedHash(h.to_string(), f_hash))
+                Err(DownloadError::MismatchedHash{ expected: h.to_string(), actual: f_hash })
             }
         } else {
             fs::rename(part_path, path)?;

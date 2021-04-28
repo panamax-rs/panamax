@@ -8,27 +8,19 @@ use scoped_threadpool::Pool;
 use serde::{Deserialize, Serialize};
 use std::io::{self, BufRead, Cursor};
 use std::path::Path;
+use thiserror::Error;
 
-quick_error! {
-    #[derive(Debug)]
-    pub enum SyncError {
-        Io(err: io::Error) {
-            from()
-        }
-        Download(err: DownloadError) {
-            from()
-        }
-        FailedDownloads(count: usize) {}
-        SerializeError(err: serde_json::Error) {
-            from()
-        }
-        GitError(err: git2::Error) {
-            from()
-        }
-        GitTargetNotFound {}
-    }
+#[derive(Error, Debug)]
+pub enum SyncError {
+    #[error("IO error: {0}")]
+    Io(#[from] io::Error),
+    #[error("Download error: {0}")]
+    Download(#[from] DownloadError),
+    #[error("JSON serialization error: {0}")]
+    SerializeError(#[from] serde_json::Error),
+    #[error("Git error: {0}")]
+    GitError(#[from] git2::Error),
 }
-
 /// One entry found in a crates.io-index file.
 /// These files are formatted as lines of JSON.
 #[derive(Debug, Serialize, Deserialize)]
@@ -169,8 +161,8 @@ pub fn sync_crates_files(
                             user_agent,
                         ) {
                             Ok(())
-                            | Err(DownloadError::NotFound(_, _, _))
-                            | Err(DownloadError::MismatchedHash(_, _)) => {}
+                            | Err(DownloadError::NotFound { status: _, url: _, data: _ })
+                            | Err(DownloadError::MismatchedHash { expected: _, actual: _ }) => {}
                             Err(e) => {
                                 s.send(ProgressBarMessage::Println(format!(
                                     "Downloading {} {} failed: {:?}",

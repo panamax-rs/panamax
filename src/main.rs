@@ -1,9 +1,6 @@
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-#[macro_use]
-extern crate quick_error;
-
 mod crates;
 mod crates_index;
 mod download;
