@@ -6,7 +6,7 @@ use git2::Repository;
 use reqwest::header::HeaderValue;
 use scoped_threadpool::Pool;
 use serde::{Deserialize, Serialize};
-use std::io::{self, BufRead, Cursor};
+use std::{fs, io::{self, BufRead, Cursor}};
 use std::path::Path;
 
 quick_error! {
@@ -90,7 +90,7 @@ pub fn sync_crates_files(
 
     // For now, assume successful crates.io-index download
     let repo_path = path.join("crates.io-index");
-    let repo = Repository::open(repo_path)?;
+    let repo = Repository::open(&repo_path)?;
 
     // Set the crates.io URL, or None if default
     let crates_source = if crates.source == "https://crates.io/api/v1/crates" {
@@ -136,6 +136,8 @@ pub fn sync_crates_files(
 
     let (pb_thread, sender) = progress_bar(Some(count), prefix);
 
+    let mut removed_crates = vec![];
+
     // Download crates multithreaded
     Pool::new(crates.download_threads as u32).scoped(|scoped| {
         diff.foreach(
@@ -150,6 +152,7 @@ pub fn sync_crates_files(
                 let oid = df.id();
                 if oid.is_zero() {
                     // The crate was removed, continue to next crate
+                    removed_crates.push(p.to_path_buf());
                     return true;
                 }
                 let blob = repo.find_blob(oid).unwrap();
@@ -192,6 +195,11 @@ pub fn sync_crates_files(
         )
         .unwrap();
     });
+
+    // Delete any removed crates
+    for rc in removed_crates {
+        fs::remove_file(repo_path.join(rc))?;
+    }
 
     sender
         .send(ProgressBarMessage::Done)
