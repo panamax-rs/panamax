@@ -33,7 +33,7 @@ pub fn progress_bar(
                 .template("{prefix} {wide_bar} {pos}/{len} [{elapsed_precise}]")
                 .progress_chars("█▉▊▋▌▍▎▏  "),
         );
-        pb.set_prefix(&prefix);
+        pb.set_prefix(prefix);
         pb.enable_steady_tick(500);
         pb.tick();
         loop {
