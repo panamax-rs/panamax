@@ -1,12 +1,12 @@
 use serde::Serialize;
 use std::{io, num::TryFromIntError, path::Path};
 
-use thiserror::Error;
 use console::style;
 use git2::{
     build::{CheckoutBuilder, RepoBuilder},
     FetchOptions, RemoteCallbacks, Repository, Signature,
 };
+use thiserror::Error;
 
 use crate::mirror::ConfigCrates;
 use crate::progress_bar::{progress_bar, ProgressBarMessage};

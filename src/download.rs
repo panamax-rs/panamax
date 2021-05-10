@@ -10,13 +10,17 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum DownloadError {
     #[error("IO error: {0}")]
-    Io(#[from]  io::Error),
+    Io(#[from] io::Error),
     #[error("HTTP download error: {0}")]
     Download(#[from] reqwest::Error),
     #[error("Mismatched hash - expected '{expected}', got '{actual}'")]
-    MismatchedHash{ expected: String, actual: String },
+    MismatchedHash { expected: String, actual: String },
     #[error("HTTP not found. Status: {status}, URL: {url}, data: {data}")]
-    NotFound{ status: u16, url: String, data: String },
+    NotFound {
+        status: u16,
+        url: String,
+        data: String,
+    },
 }
 
 thread_local!(static CLIENT: Client = Client::new());
@@ -131,7 +135,7 @@ fn one_download(
                     forbidden_path,
                     format!("Server returned {}: {}", status, &text),
                 )?;
-                return Err(DownloadError::NotFound{ 
+                return Err(DownloadError::NotFound {
                     status: status.as_u16(),
                     url: url.to_string(),
                     data: text,
@@ -158,7 +162,10 @@ fn one_download(
             } else {
                 let badsha_path = append_to_path(path, ".badsha256");
                 fs::write(badsha_path, &f_hash)?;
-                Err(DownloadError::MismatchedHash{ expected: h.to_string(), actual: f_hash })
+                Err(DownloadError::MismatchedHash {
+                    expected: h.to_string(),
+                    actual: f_hash,
+                })
             }
         } else {
             fs::rename(part_path, path)?;

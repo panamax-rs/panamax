@@ -117,7 +117,7 @@ pub enum SyncError {
     #[error("Path prefix strip error: {0}")]
     StripPrefix(#[from] std::path::StripPrefixError),
     #[error("Failed {count} downloads")]
-    FailedDownloads{ count: usize },
+    FailedDownloads { count: usize },
 }
 
 #[derive(Deserialize, Debug)]
@@ -203,7 +203,7 @@ pub fn get_platforms(rustup: &ConfigRustup) -> Result<Platforms, MirrorError> {
                 .into_iter()
                 .map(|x| x.to_string())
                 .collect()
-        },
+        }
     };
     Ok(Platforms { unix, windows })
 }
@@ -288,9 +288,21 @@ pub fn sync_rustup_init(
             let s = sender.clone();
             let rustup_version = rustup_version.clone();
             scoped.execute(move || {
-                if let Err(e) = sync_one_init(path, source, platform.as_str(), false, &rustup_version, retries, user_agent) {
+                if let Err(e) = sync_one_init(
+                    path,
+                    source,
+                    platform.as_str(),
+                    false,
+                    &rustup_version,
+                    retries,
+                    user_agent,
+                ) {
                     match e {
-                        DownloadError::NotFound { status: _, url: _, data: _ } => {}
+                        DownloadError::NotFound {
+                            status: _,
+                            url: _,
+                            data: _,
+                        } => {}
                         _ => {
                             s.send(ProgressBarMessage::Println(format!(
                                 "Downloading {} failed: {:?}",
@@ -321,7 +333,11 @@ pub fn sync_rustup_init(
                     user_agent,
                 ) {
                     match e {
-                        DownloadError::NotFound { status: _, url: _, data: _ } => {}
+                        DownloadError::NotFound {
+                            status: _,
+                            url: _,
+                            data: _,
+                        } => {}
                         _ => {
                             s.send(ProgressBarMessage::Println(format!(
                                 "Downloading {} failed: {:?}",
@@ -348,7 +364,7 @@ pub fn sync_rustup_init(
     if errors == 0 {
         Ok(())
     } else {
-        Err(SyncError::FailedDownloads{ count: errors})
+        Err(SyncError::FailedDownloads { count: errors })
     }
 }
 
@@ -378,10 +394,7 @@ pub fn rustup_download_list(
                             .into_iter()
                             .flatten()
                             .map(|(url, hash)| {
-                                (
-                                    url.split("/").collect::<Vec<&str>>()[3..].join("/"),
-                                    hash,
-                                )
+                                (url.split("/").collect::<Vec<&str>>()[3..].join("/"), hash)
                             })
                             .collect()
                     })
@@ -620,7 +633,7 @@ pub fn sync_rustup_channel(
         move_if_exists_with_sha256(&channel_part_path, &channel_path)?;
         Ok(())
     } else {
-        Err(SyncError::FailedDownloads{ count: errors })
+        Err(SyncError::FailedDownloads { count: errors })
     }
 }
 
@@ -631,7 +644,6 @@ pub fn sync(
     rustup: &ConfigRustup,
     user_agent: &HeaderValue,
 ) -> Result<(), MirrorError> {
-
     let platforms = get_platforms(&rustup)?;
 
     eprintln!("{}", style("Syncing Rustup repositories...").bold());

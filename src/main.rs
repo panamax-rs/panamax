@@ -36,11 +36,11 @@ enum Panamax {
         /// Mirror directory.
         #[structopt(parse(from_os_str))]
         path: PathBuf,
-        
+
         /// Base URL used for rewriting. Overrides value in mirror.toml.
         #[structopt(short, long)]
         base_url: Option<String>,
-    }
+    },
 }
 
 fn main() {

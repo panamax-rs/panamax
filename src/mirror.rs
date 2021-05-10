@@ -169,7 +169,7 @@ pub fn sync(path: &Path) -> Result<(), MirrorError> {
 }
 
 /// Rewrite the config.toml only.
-/// 
+///
 /// Note that this will also fast-forward the repository
 /// from origin/master, to keep a clean slate.
 pub fn rewrite(path: &Path, base_url: Option<String>) -> Result<(), MirrorError> {
@@ -189,7 +189,9 @@ pub fn rewrite(path: &Path, base_url: Option<String>) -> Result<(), MirrorError>
             }
         } else {
             eprintln!("No base_url was provided.");
-            eprintln!("This needs to be provided by command line or in the mirror.toml to continue.")
+            eprintln!(
+                "This needs to be provided by command line or in the mirror.toml to continue."
+            )
         }
     } else {
         eprintln!("Crates section missing in mirror.toml.");
