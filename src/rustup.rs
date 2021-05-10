@@ -180,7 +180,7 @@ pub fn get_platforms(rustup: &ConfigRustup) -> Result<Platforms, MirrorError> {
         }
         None => {
             eprintln!("Info: no 'platforms_unix' specified in 'rustup' section of 'mirror.toml', mirroring all platforms.");
-            PLATFORMS_UNIX.into_iter().map(|x| x.to_string()).collect()
+            PLATFORMS_UNIX.iter().map(|x| x.to_string()).collect()
         }
     };
     let windows = match &rustup.platforms_windows {
@@ -199,10 +199,7 @@ pub fn get_platforms(rustup: &ConfigRustup) -> Result<Platforms, MirrorError> {
         }
         None => {
             eprintln!("Info: no 'platforms_windows' specified in 'rustup' section of 'mirror.toml', mirroring all platforms.");
-            PLATFORMS_WINDOWS
-                .into_iter()
-                .map(|x| x.to_string())
-                .collect()
+            PLATFORMS_WINDOWS.iter().map(|x| x.to_string()).collect()
         }
     };
     Ok(Platforms { unix, windows })
@@ -394,7 +391,7 @@ pub fn rustup_download_list(
                             .into_iter()
                             .flatten()
                             .map(|(url, hash)| {
-                                (url.split("/").collect::<Vec<&str>>()[3..].join("/"), hash)
+                                (url.split('/').collect::<Vec<&str>>()[3..].join("/"), hash)
                             })
                             .collect()
                     })
@@ -573,6 +570,7 @@ pub fn get_rustup_version(path: &Path) -> Result<String, SyncError> {
 }
 
 /// Synchronize a rustup channel (stable, beta, or nightly).
+#[allow(clippy::too_many_arguments)]
 pub fn sync_rustup_channel(
     path: &Path,
     source: &str,
