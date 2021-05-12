@@ -1,5 +1,5 @@
+use reqwest::blocking::Client;
 use reqwest::header::{HeaderValue, USER_AGENT};
-use reqwest::Client;
 use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{Read, Write};
@@ -143,13 +143,13 @@ fn one_download(
                     break;
                 }
                 if hash.is_some() {
-                    sha256.write_all(&buf[..byte_count])?;
+                    sha256.update(&buf[..byte_count]);
                 }
                 f.write_all(&buf[..byte_count])?;
             }
         }
 
-        let f_hash = format!("{:x}", sha256.result());
+        let f_hash = format!("{:x}", sha256.finalize());
 
         if let Some(h) = hash {
             if f_hash == h {
