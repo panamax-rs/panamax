@@ -1,6 +1,7 @@
 use serde::Serialize;
 use std::{io, num::TryFromIntError, path::Path};
 
+use thiserror::Error;
 use console::style;
 use git2::{
     build::{CheckoutBuilder, RepoBuilder},
@@ -10,23 +11,16 @@ use git2::{
 use crate::mirror::ConfigCrates;
 use crate::progress_bar::{progress_bar, ProgressBarMessage};
 
-quick_error! {
-    #[derive(Debug)]
-    pub enum IndexSyncError {
-        Io(err: io::Error) {
-            from()
-        }
-        SerializeError(err: serde_json::Error) {
-            from()
-        }
-        GitError(err: git2::Error) {
-            from()
-        }
-        IntegerConversionError(err: TryFromIntError) {
-            from()
-        }
-        GitTargetNotFound {}
-    }
+#[derive(Error, Debug)]
+pub enum IndexSyncError {
+    #[error("IO error: {0}")]
+    Io(#[from] io::Error),
+    #[error("JSON serialization error: {0}")]
+    SerializeError(#[from] serde_json::Error),
+    #[error("Git error: {0}")]
+    GitError(#[from] git2::Error),
+    #[error("Number conversion error: {0}")]
+    IntegerConversionError(#[from] TryFromIntError),
 }
 
 #[derive(Debug, Serialize)]

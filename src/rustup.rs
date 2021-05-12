@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{fs, io};
+use thiserror::Error;
 
 // The allowed platforms to validate the configuration
 // Note: These platforms should match the list on https://rust-lang.github.io/rustup/installation/other.html
@@ -103,27 +104,20 @@ static PLATFORMS_WINDOWS: &[&str] = &[
     "x86_64-pc-windows-gnu",
     "x86_64-pc-windows-msvc",
 ];
-
-quick_error! {
-    #[derive(Debug)]
-    pub enum SyncError {
-        Io(err: io::Error) {
-            from()
-        }
-        Download(err: DownloadError) {
-            from()
-        }
-        Parse(err: toml::de::Error) {
-            from()
-        }
-        Serialize(err: toml::ser::Error) {
-            from()
-        }
-        StripPrefix(err: std::path::StripPrefixError) {
-            from()
-        }
-        FailedDownloads(count: usize) {}
-    }
+#[derive(Error, Debug)]
+pub enum SyncError {
+    #[error("IO error: {0}")]
+    Io(#[from] io::Error),
+    #[error("Download error: {0}")]
+    Download(#[from] DownloadError),
+    #[error("TOML deserialization error: {0}")]
+    Parse(#[from] toml::de::Error),
+    #[error("TOML serialization error: {0}")]
+    Serialize(#[from] toml::ser::Error),
+    #[error("Path prefix strip error: {0}")]
+    StripPrefix(#[from] std::path::StripPrefixError),
+    #[error("Failed {count} downloads")]
+    FailedDownloads{ count: usize },
 }
 
 #[derive(Deserialize, Debug)]
@@ -296,7 +290,7 @@ pub fn sync_rustup_init(
             scoped.execute(move || {
                 if let Err(e) = sync_one_init(path, source, platform.as_str(), false, &rustup_version, retries, user_agent) {
                     match e {
-                        DownloadError::NotFound(_, _, _) => {}
+                        DownloadError::NotFound { status: _, url: _, data: _ } => {}
                         _ => {
                             s.send(ProgressBarMessage::Println(format!(
                                 "Downloading {} failed: {:?}",
@@ -327,7 +321,7 @@ pub fn sync_rustup_init(
                     user_agent,
                 ) {
                     match e {
-                        DownloadError::NotFound(_, _, _) => {}
+                        DownloadError::NotFound { status: _, url: _, data: _ } => {}
                         _ => {
                             s.send(ProgressBarMessage::Println(format!(
                                 "Downloading {} failed: {:?}",
@@ -354,7 +348,7 @@ pub fn sync_rustup_init(
     if errors == 0 {
         Ok(())
     } else {
-        Err(SyncError::FailedDownloads(errors))
+        Err(SyncError::FailedDownloads{ count: errors})
     }
 }
 
@@ -626,7 +620,7 @@ pub fn sync_rustup_channel(
         move_if_exists_with_sha256(&channel_part_path, &channel_path)?;
         Ok(())
     } else {
-        Err(SyncError::FailedDownloads(errors))
+        Err(SyncError::FailedDownloads{ count: errors })
     }
 }
 

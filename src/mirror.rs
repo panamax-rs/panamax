@@ -4,20 +4,18 @@ use std::{fs, io};
 use console::style;
 use reqwest::header::HeaderValue;
 use serde_derive::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::crates_index::rewrite_config_json;
 
-quick_error! {
-    #[derive(Debug)]
-    pub enum MirrorError {
-        Io(err: io::Error) {
-            from()
-        }
-        Parse(err: toml::de::Error) {
-            from()
-        }
-        Config(err: String) {}
-    }
+#[derive(Error, Debug)]
+pub enum MirrorError {
+    #[error("IO error: {0}")]
+    Io(#[from] io::Error),
+    #[error("TOML deserialization error: {0}")]
+    Parse(#[from] toml::de::Error),
+    #[error("Config file error: {0}")]
+    Config(String),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
