@@ -154,5 +154,6 @@ source_index = "https://github.com/rust-lang/crates.io-index"
 # URL where this mirror's crates directory can be accessed from.
 # Used for rewriting crates.io-index's config.json.
 # Remove this parameter to perform no rewriting.
+# If removed, the `panamax rewrite` command can be used later.
 base_url = "http://panamax.internal/crates"
 

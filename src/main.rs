@@ -29,6 +29,21 @@ enum Panamax {
         #[structopt(parse(from_os_str))]
         path: PathBuf,
     },
+
+    /// Rewrite the config.json within crates.io-index.
+    ///
+    /// This can be used if rewriting config.json is
+    /// required to be an extra step after syncing.
+    #[structopt(name = "rewrite")]
+    Rewrite {
+        /// Mirror directory.
+        #[structopt(parse(from_os_str))]
+        path: PathBuf,
+        
+        /// Base URL used for rewriting. Overrides value in mirror.toml.
+        #[structopt(short, long)]
+        base_url: Option<String>,
+    }
 }
 
 fn main() {
@@ -37,6 +52,7 @@ fn main() {
     match opt {
         Panamax::Init { path } => mirror::init(&path),
         Panamax::Sync { path } => mirror::sync(&path),
+        Panamax::Rewrite { path, base_url } => mirror::rewrite(&path, base_url),
     }
     .unwrap();
 }
