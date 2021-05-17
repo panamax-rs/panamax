@@ -169,7 +169,7 @@ pub fn sync(path: &Path) -> Result<(), MirrorError> {
 }
 
 /// Rewrite the config.toml only.
-/// 
+///
 /// Note that this will also fast-forward the repository
 /// from origin/master, to keep a clean slate.
 pub fn rewrite(path: &Path, base_url: Option<String>) -> Result<(), MirrorError> {
@@ -183,13 +183,15 @@ pub fn rewrite(path: &Path, base_url: Option<String>) -> Result<(), MirrorError>
     let mirror = load_mirror_toml(path)?;
 
     if let Some(crates) = mirror.crates {
-        if let Some(base_url) = base_url.as_deref().or(crates.base_url.as_deref()) {
+        if let Some(base_url) = base_url.as_deref().or_else(|| crates.base_url.as_deref()) {
             if let Err(e) = rewrite_config_json(&path.join("crates.io-index"), base_url) {
                 eprintln!("Updating crates.io-index config failed: {:?}", e);
             }
         } else {
             eprintln!("No base_url was provided.");
-            eprintln!("This needs to be provided by command line or in the mirror.toml to continue.")
+            eprintln!(
+                "This needs to be provided by command line or in the mirror.toml to continue."
+            )
         }
     } else {
         eprintln!("Crates section missing in mirror.toml.");

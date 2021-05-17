@@ -6,8 +6,11 @@ use git2::Repository;
 use reqwest::header::HeaderValue;
 use scoped_threadpool::Pool;
 use serde::{Deserialize, Serialize};
-use std::{fs, io::{self, BufRead, Cursor}};
 use std::path::Path;
+use std::{
+    fs,
+    io::{self, BufRead, Cursor},
+};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -164,8 +167,15 @@ pub fn sync_crates_files(
                             user_agent,
                         ) {
                             Ok(())
-                            | Err(DownloadError::NotFound { status: _, url: _, data: _ })
-                            | Err(DownloadError::MismatchedHash { expected: _, actual: _ }) => {}
+                            | Err(DownloadError::NotFound {
+                                status: _,
+                                url: _,
+                                data: _,
+                            })
+                            | Err(DownloadError::MismatchedHash {
+                                expected: _,
+                                actual: _,
+                            }) => {}
                             Err(e) => {
                                 s.send(ProgressBarMessage::Println(format!(
                                     "Downloading {} {} failed: {:?}",
