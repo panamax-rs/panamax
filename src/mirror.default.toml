@@ -41,6 +41,19 @@ keep_latest_stables = 1
 keep_latest_betas = 1
 keep_latest_nightlies = 1
 
+# Pinned versions of Rust to download and keep alongside latest stable/beta/nightly
+# Version specifiers should be in the rustup toolchain format:
+#
+# <channel>[-<date>][-<host>]
+#
+# <channel>       = stable|beta|nightly|<major.minor>|<major.minor.patch>
+# <date>          = YYYY-MM-DD
+# <host>          = <target-triple>
+#
+# e.g. valid versions could be "1.42", "1.42.0", and "nightly-2014-12-18"
+pinned_rust_versions = [
+]
+
 # The platforms to include in the mirror
 # These lists can be empty to mirror nothing, but if the setting is not set, it will default to all platforms.
 # Note: These platforms should match the list on https://rust-lang.github.io/rustup/installation/other.html

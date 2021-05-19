@@ -51,5 +51,5 @@ fn main() {
         Panamax::Sync { path } => mirror::sync(&path),
         Panamax::Rewrite { path, base_url } => mirror::rewrite(&path, base_url),
     }
-    .unwrap();
+    .unwrap_or_else(|e| eprintln!("Panamax command failed! {}", e));
 }
