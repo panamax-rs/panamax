@@ -1,7 +1,6 @@
 use serde::Serialize;
 use std::{io, num::TryFromIntError, path::Path};
 
-use console::style;
 use git2::{
     build::{CheckoutBuilder, RepoBuilder},
     FetchOptions, RemoteCallbacks, Repository, Signature,
@@ -9,7 +8,7 @@ use git2::{
 use thiserror::Error;
 
 use crate::mirror::ConfigCrates;
-use crate::progress_bar::{progress_bar, ProgressBarMessage};
+use crate::progress_bar::{padded_prefix_message, progress_bar, ProgressBarMessage};
 
 #[derive(Error, Debug)]
 pub enum IndexSyncError {
@@ -38,7 +37,7 @@ pub fn sync_crates_repo(mirror_path: &Path, crates: &ConfigCrates) -> Result<(),
     let repo_path = mirror_path.join("crates.io-index");
 
     // Set up progress bar piping.
-    let prefix = format!("{} Fetching crates.io-index... ", style("[1/3]").bold());
+    let prefix = padded_prefix_message(1, 3, "Fetching crates.io-index");
     let (pb_thread, sender) = progress_bar(None, prefix);
 
     // Libgit2 has callbacks that allow us to update the progress bar
@@ -138,7 +137,10 @@ pub fn rewrite_config_json(repo_path: &Path, base_url: &str) -> Result<(), Index
     let refname = "refs/heads/master";
     let signature = Signature::now("Panamax", "panamax@panamax")?;
 
-    eprintln!("{} Syncing index and config... ", style("[3/3]").bold());
+    eprintln!(
+        "{}",
+        padded_prefix_message(3, 3, "Syncing index and config")
+    );
 
     // Set master to origin/master.
     fast_forward(&repo_path)?;
