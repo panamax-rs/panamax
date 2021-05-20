@@ -101,8 +101,15 @@ pub fn sync_crates_files(
     let master = repo.find_reference("refs/heads/master")?;
     let master_tree = master.peel_to_tree()?;
 
+    // Perform a full scan if master and origin/master match
+    let do_full_scan = origin_master.peel_to_commit()?.id() == master.peel_to_commit()?.id();
+
     // Diff between master and origin/master (i.e. everything since the last fetch)
-    let diff = repo.diff_tree_to_tree(Some(&master_tree), Some(&origin_master_tree), None)?;
+    let diff = if do_full_scan {
+        repo.diff_tree_to_tree(None, Some(&origin_master_tree), None)?
+    } else {
+        repo.diff_tree_to_tree(Some(&master_tree), Some(&origin_master_tree), None)?
+    };
 
     // Run one pass to figure out a total count
     let mut count = 0;
@@ -200,7 +207,8 @@ pub fn sync_crates_files(
 
     // Delete any removed crates
     for rc in removed_crates {
-        fs::remove_file(repo_path.join(rc))?;
+        // Try to remove the file, but ignore it if it doesn't exist
+        let _ = fs::remove_file(repo_path.join(rc));
     }
 
     sender

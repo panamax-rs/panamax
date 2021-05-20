@@ -94,7 +94,7 @@ pub fn update_crates_config(
 fn fast_forward(repo_path: &Path) -> Result<(), IndexSyncError> {
     let repo = Repository::open(repo_path)?;
 
-    let fetch_head = repo.find_reference("FETCH_HEAD")?;
+    let fetch_head = repo.find_reference("refs/remotes/origin/master")?;
     let fetch_commit = repo.reference_to_annotated_commit(&fetch_head)?;
 
     // Force fast-forward on master
