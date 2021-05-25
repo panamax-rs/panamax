@@ -81,7 +81,12 @@ pub fn sync_crates_files(
     crates: &ConfigCrates,
     user_agent: &HeaderValue,
 ) -> Result<(), SyncError> {
-    let prefix = format!("{} Syncing crates files...     ", style("[2/3]").bold());
+
+    let prefix = if cfg!(feature = "dev_reduced_crates") {
+        format!("{} Syncing 'z' crates files... ", style("[2/3]").bold())
+    } else {
+        format!("{} Syncing crates files...     ", style("[2/3]").bold())
+    };
 
     // For now, assume successful crates.io-index download
     let repo_path = path.join("crates.io-index");
@@ -121,6 +126,16 @@ pub fn sync_crates_files(
                 // Skip config.json, as it's the only file that's not a crate descriptor
                 return true;
             }
+            
+            // DEV: if dev_reduced_crates is enabled, only download crates that start with z
+            #[cfg(feature = "dev_reduced_crates")]
+            {
+                // Get file name, try-convert to string, check if starts_with z, unwrap, or false if None
+                if !p.file_name().and_then(|x| x.to_str()).map(|x| x.starts_with("z")).unwrap_or(false) {
+                    return true;
+                }
+            }
+
             let oid = df.id();
             if oid.is_zero() {
                 // The crate was removed, continue to next crate
@@ -148,6 +163,15 @@ pub fn sync_crates_files(
                 let p = df.path().unwrap();
                 if p == Path::new("config.json") {
                     return true;
+                }
+
+                // DEV: if dev_reduced_crates is enabled, only download crates that start with z
+                #[cfg(feature = "dev_reduced_crates")]
+                {
+                    // Get file name, try-convert to string, check if starts_with z, unwrap, or false if None
+                    if !p.file_name().and_then(|x| x.to_str()).map(|x| x.starts_with("z")).unwrap_or(false) {
+                        return true;
+                    }
                 }
 
                 // Get the data for this crate file
