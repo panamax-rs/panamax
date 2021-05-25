@@ -81,7 +81,6 @@ pub fn sync_crates_files(
     crates: &ConfigCrates,
     user_agent: &HeaderValue,
 ) -> Result<(), SyncError> {
-
     let prefix = if cfg!(feature = "dev_reduced_crates") {
         format!("{} Syncing 'z' crates files... ", style("[2/3]").bold())
     } else {
@@ -126,12 +125,17 @@ pub fn sync_crates_files(
                 // Skip config.json, as it's the only file that's not a crate descriptor
                 return true;
             }
-            
+
             // DEV: if dev_reduced_crates is enabled, only download crates that start with z
             #[cfg(feature = "dev_reduced_crates")]
             {
                 // Get file name, try-convert to string, check if starts_with z, unwrap, or false if None
-                if !p.file_name().and_then(|x| x.to_str()).map(|x| x.starts_with("z")).unwrap_or(false) {
+                if !p
+                    .file_name()
+                    .and_then(|x| x.to_str())
+                    .map(|x| x.starts_with("z"))
+                    .unwrap_or(false)
+                {
                     return true;
                 }
             }
@@ -169,7 +173,12 @@ pub fn sync_crates_files(
                 #[cfg(feature = "dev_reduced_crates")]
                 {
                     // Get file name, try-convert to string, check if starts_with z, unwrap, or false if None
-                    if !p.file_name().and_then(|x| x.to_str()).map(|x| x.starts_with("z")).unwrap_or(false) {
+                    if !p
+                        .file_name()
+                        .and_then(|x| x.to_str())
+                        .map(|x| x.starts_with("z"))
+                        .unwrap_or(false)
+                    {
                         return true;
                     }
                 }
