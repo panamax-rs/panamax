@@ -133,7 +133,7 @@ pub fn sync_crates_files(
                 if !p
                     .file_name()
                     .and_then(|x| x.to_str())
-                    .map(|x| x.starts_with("z"))
+                    .map(|x| x.starts_with('z'))
                     .unwrap_or(false)
                 {
                     return true;
@@ -176,7 +176,7 @@ pub fn sync_crates_files(
                     if !p
                         .file_name()
                         .and_then(|x| x.to_str())
-                        .map(|x| x.starts_with("z"))
+                        .map(|x| x.starts_with('z'))
                         .unwrap_or(false)
                     {
                         return true;
