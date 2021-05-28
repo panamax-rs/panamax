@@ -25,3 +25,10 @@ glob = "0.3.0"
 git2 = "0.13.18"
 serde_json = "1.0.64"
 thiserror = "1.0.24"
+
+[features]
+default = []
+
+# For development purposes, reduce the crate download count
+# and only download crates that start with z
+dev_reduced_crates = []
