@@ -4,7 +4,8 @@ WORKDIR /app
 
 ADD --chown=rust:rust . /app/
 
-RUN cargo build --release
+ARG CARGO_BUILD_EXTRA
+RUN cargo build --release $CARGO_BUILD_EXTRA
 
 FROM alpine:latest
 
