@@ -16,6 +16,17 @@ Alternatively, you can clone this repository and `cargo build` or `cargo run` wi
 
 ## Usage
 
+## Docker
+
+Panamax is available as a docker image, so you can run:
+
+```
+$ docker run -it -v /path/to/mirror/:/mirror k3d3/panamax init /mirror
+(Modify /path/to/mirror/mirror.toml as needed)
+$ docker run -it -v /path/to/mirror/:/mirror k3d3/panamax sync /mirror
+```
+
+Alternatively, you can run panamax in a bare-metal environment like below.
 
 ### Init
 
