@@ -382,7 +382,9 @@ pub fn rustup_download_list(
                 pkg.target
                     .into_iter()
                     .filter(|(name, _)| {
-                        platforms.unix.contains(&name) || platforms.windows.contains(&name) || name == "*"
+                        platforms.unix.contains(&name)
+                            || platforms.windows.contains(&name)
+                            || name == "*"
                     })
                     .flat_map(|(_, target)| -> Vec<(String, String)> {
                         target
