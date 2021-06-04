@@ -1,16 +1,18 @@
-FROM ekidd/rust-musl-builder:latest AS builder
+FROM rust:latest AS builder
 
 WORKDIR /app
 
-ADD --chown=rust:rust . /app/
+#ADD --chown=rust:rust . /app/
+ADD . /app/
 
 ARG CARGO_BUILD_EXTRA
 RUN cargo build --release $CARGO_BUILD_EXTRA
 
-FROM alpine:latest
+FROM debian:latest
 
-RUN apk --no-cache add ca-certificates
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/panamax /usr/local/bin
+COPY --from=builder /app/target/release/panamax /usr/local/bin
+RUN apt update
+RUN apt install -y libssl1.1 ca-certificates
 
 ENTRYPOINT [ "/usr/local/bin/panamax" ]
 CMD ["--help"]
