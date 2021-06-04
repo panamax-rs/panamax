@@ -384,7 +384,7 @@ pub fn rustup_download_list(
                     .filter(|(name, _)| {
                         platforms.unix.contains(&name)
                             || platforms.windows.contains(&name)
-                            || name == "*"
+                            || name == "*" // The * platform contains rust-src, always download
                     })
                     .flat_map(|(_, target)| -> Vec<(String, String)> {
                         target
