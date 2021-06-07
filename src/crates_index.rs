@@ -147,9 +147,11 @@ pub fn rewrite_config_json(repo_path: &Path, base_url: &str) -> Result<(), Index
 
     let mut index = repo.index()?;
 
+    let crate_path = format!("{}/{}", base_url, "{crate}/{crate}-{version}.crate");
+
     // Create the new config.json.
     let config_json = ConfigJson {
-        dl: base_url.to_string(),
+        dl: crate_path,
         api: base_url.to_string(),
     };
     let contents = serde_json::to_vec_pretty(&config_json)?;
