@@ -13,6 +13,8 @@ pub enum DownloadError {
     Io(#[from] io::Error),
     #[error("HTTP download error: {0}")]
     Download(#[from] reqwest::Error),
+    #[error("Got bad crate: {0}")]
+    BadCrate(String),
     #[error("Mismatched hash - expected '{expected}', got '{actual}'")]
     MismatchedHash { expected: String, actual: String },
     #[error("HTTP not found. Status: {status}, URL: {url}, data: {data}")]

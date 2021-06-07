@@ -151,6 +151,9 @@ source = "https://crates.io/api/v1/crates"
 # Where to clone the crates.io-index repository from.
 source_index = "https://github.com/rust-lang/crates.io-index"
 
+# Set to true if the 0.3 crates directory format is being used.
+use_new_crates_format = true
+
 # URL where this mirror's crates directory can be accessed from.
 # Used for rewriting crates.io-index's config.json.
 # Remove this parameter to perform no rewriting.
