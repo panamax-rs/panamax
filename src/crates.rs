@@ -57,12 +57,6 @@ pub fn sync_one_crate_entry(
         )
     };
 
-    // let file_path = path
-    //     .join("crates")
-    //     .join(&crate_entry.name)
-    //     .join(&crate_entry.vers)
-    //     .join("download");
-
     let crate_name = format!("{}-{}.crate", &crate_entry.name, &crate_entry.vers);
 
     let crate_path = match crate_entry.name.len() {
@@ -294,20 +288,12 @@ pub fn is_new_crates_format(path: &Path) -> Result<bool, io::Error> {
             .into_string()
             .map_err(|_| io::ErrorKind::Other)?;
         match dir_name.as_str() {
-            "1" | "2" | "3" => continue, // 1-letter crate names cannot be numbers, so this must be new format.
-            x if x.len() == 2 => {
-                // Verify that this isn't a 2-char crate, by checking for 2 char crates inside.
-                // In the old format, this would contain version numbers, which are almost never 2 chars long.
-                for inner_dir in read_dir(path.join(crate_dir.file_name()))? {
-                    let inner_dir = inner_dir?;
-                    if inner_dir.file_name().len() != 2 {
-                        // Not the new crates format.
-                        return Ok(false);
-                    }
-                }
-            }
+            // 1-letter crate names cannot be numbers, so this must be new format.
+            "1" | "2" | "3" => continue,
+            // 2-letter directories are used for crates longer than 3 characters.
+            x if x.len() == 2 => continue,
+            // Unrecognized directory found, might be crate in old format.
             _ => {
-                // Unrecognized directory found, might be crate in old format.
                 return Ok(false);
             }
         };
