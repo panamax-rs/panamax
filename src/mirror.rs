@@ -126,27 +126,13 @@ pub fn sync(path: &Path) -> Result<(), MirrorError> {
     // If use_new_crates_format is true and new format is detected, warn the user.
     // If use_new_crates_format is true, ignore the format and assume it's new.
     if let Some(crates) = &mirror.crates {
-        if crates.sync && crates.use_new_crates_format != Some(true) {
-            if is_new_crates_format(&path.join("crates"))? {
-                eprintln!("Your crates directory is using the new 0.3 format, however");
-                eprintln!(
-                    "use_new_crates_format is not set in mirror.toml. To remove this warning,"
-                );
-                eprintln!(
-                    "Please add 'use_new_crates_format = true' to mirror.toml's [crates] section."
-                );
-                eprintln!();
-            } else {
-                eprintln!("Your crates directory is using the old 0.2 format, however");
-                eprintln!("Panamax 0.3 has deprecated this format for a new one.");
-                eprintln!(
-                    "Please delete crates/ and crates.io-index/ from your mirror to continue,"
-                );
-                eprintln!(
-                    "and add 'use_new_crates_format = true' to mirror.toml's [crates] section."
-                );
-                return Ok(());
-            }
+        if crates.sync && !is_new_crates_format(&path.join("crates"))? {
+            eprintln!("Your crates directory is using the old 0.2 format, however");
+            eprintln!("Panamax 0.3 has deprecated this format for a new one.");
+            eprintln!(
+                "Please delete crates/ from your mirror directory to continue."
+            );
+            return Ok(());
         }
     }
 
