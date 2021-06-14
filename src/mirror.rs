@@ -34,6 +34,7 @@ pub struct ConfigRustup {
     pub keep_latest_stables: Option<usize>,
     pub keep_latest_betas: Option<usize>,
     pub keep_latest_nightlies: Option<usize>,
+    pub pinned_rust_versions: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
