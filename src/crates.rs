@@ -276,6 +276,11 @@ pub fn sync_crates_files(
 
 /// Detect if the crates directory is using the old format.
 pub fn is_new_crates_format(path: &Path) -> Result<bool, io::Error> {
+    if !path.exists() {
+        // Path doesn't exist, so we can start with a clean slate.
+        return Ok(true);
+    }
+
     for crate_dir in read_dir(path)? {
         let crate_dir = crate_dir?;
         if !crate_dir.file_type()?.is_dir() {
