@@ -130,9 +130,7 @@ pub fn sync(path: &Path) -> Result<(), MirrorError> {
         if crates.sync && !is_new_crates_format(&path.join("crates"))? {
             eprintln!("Your crates directory is using the old 0.2 format, however");
             eprintln!("Panamax 0.3 has deprecated this format for a new one.");
-            eprintln!(
-                "Please delete crates/ from your mirror directory to continue."
-            );
+            eprintln!("Please delete crates/ from your mirror directory to continue.");
             return Ok(());
         }
     }
