@@ -1,7 +1,6 @@
 use crate::download::{download, DownloadError};
 use crate::mirror::{ConfigCrates, ConfigMirror};
-use crate::progress_bar::{progress_bar, ProgressBarMessage};
-use console::style;
+use crate::progress_bar::{padded_prefix_message, progress_bar, ProgressBarMessage};
 use git2::Repository;
 use reqwest::header::HeaderValue;
 use scoped_threadpool::Pool;
@@ -82,9 +81,9 @@ pub fn sync_crates_files(
     user_agent: &HeaderValue,
 ) -> Result<(), SyncError> {
     let prefix = if cfg!(feature = "dev_reduced_crates") {
-        format!("{} Syncing 'z' crates files... ", style("[2/3]").bold())
+        padded_prefix_message(2, 3, "Syncing 'z' crates files")
     } else {
-        format!("{} Syncing crates files...     ", style("[2/3]").bold())
+        padded_prefix_message(2, 3, "Syncing crates files")
     };
 
     // For now, assume successful crates.io-index download

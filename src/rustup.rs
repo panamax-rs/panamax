@@ -3,7 +3,9 @@ use crate::download::{
     move_if_exists, move_if_exists_with_sha256, write_file_create_dir, DownloadError,
 };
 use crate::mirror::{ConfigMirror, ConfigRustup, MirrorError};
-use crate::progress_bar::{progress_bar, ProgressBarMessage};
+use crate::progress_bar::{
+    current_step_prefix, padded_prefix_message, progress_bar, ProgressBarMessage,
+};
 use console::style;
 use reqwest::header::HeaderValue;
 use scoped_threadpool::Pool;
@@ -451,6 +453,7 @@ pub fn clean_old_files(
     keep_stables: Option<usize>,
     keep_betas: Option<usize>,
     keep_nightlies: Option<usize>,
+    pinned_rust_versions: Option<&Vec<String>>,
     prefix: String,
 ) -> Result<(), SyncError> {
     // Handle all of stable/beta/nightly
@@ -471,7 +474,6 @@ pub fn clean_old_files(
         let latest_dates = latest_dates_from_channel_history(&beta, b);
         for date in latest_dates {
             if let Some(t) = beta.versions.get_mut(&date) {
-                //files_to_keep.append(&mut t);
                 t.iter().for_each(|t| {
                     files_to_keep.insert(t.to_string());
                 });
@@ -486,6 +488,19 @@ pub fn clean_old_files(
                 t.iter().for_each(|t| {
                     files_to_keep.insert(t.to_string());
                 });
+            }
+        }
+    }
+    if let Some(pinned_versions) = pinned_rust_versions {
+        for version in pinned_versions {
+            let mut pinned = get_channel_history(path, &version)?;
+            let latest_dates = latest_dates_from_channel_history(&pinned, 1);
+            for date in latest_dates {
+                if let Some(t) = pinned.versions.get_mut(&date) {
+                    t.iter().for_each(|t| {
+                        files_to_keep.insert(t.to_string());
+                    });
+                }
             }
         }
     }
@@ -646,10 +661,18 @@ pub fn sync(
 ) -> Result<(), MirrorError> {
     let platforms = get_platforms(&rustup)?;
 
+    let num_pinned_versions = rustup.pinned_rust_versions.as_ref().map_or(0, |v| v.len());
+    let num_steps = 1 + // sync rustup-init
+                    1 + 1 + 1 + // sync latest stable, beta, nightly
+                    num_pinned_versions + // sync pinned rust versions
+                    1; // clean old files
+    let mut step = 0;
+
     eprintln!("{}", style("Syncing Rustup repositories...").bold());
 
     // Mirror rustup-init
-    let prefix = format!("{} Syncing rustup-init files...", style("[1/5]").bold());
+    step += 1;
+    let prefix = padded_prefix_message(step, num_steps, "Syncing rustup-init files");
     if let Err(e) = sync_rustup_init(
         path,
         &rustup.source,
@@ -666,8 +689,9 @@ pub fn sync(
     let mut failures = false;
 
     // Mirror stable
+    step += 1;
     if rustup.keep_latest_stables != Some(0) {
-        let prefix = format!("{} Syncing latest stable...    ", style("[2/5]").bold());
+        let prefix = padded_prefix_message(step, num_steps, "Syncing latest stable");
         if let Err(e) = sync_rustup_channel(
             path,
             &rustup.source,
@@ -683,12 +707,16 @@ pub fn sync(
             eprintln!("You will need to sync again to finish this download.");
         }
     } else {
-        eprintln!("{} Skipping syncing stable.", style("[2/5]").bold());
+        eprintln!(
+            "{} Skipping syncing stable.",
+            current_step_prefix(step, num_steps)
+        );
     }
 
     // Mirror beta
+    step += 1;
     if rustup.keep_latest_betas != Some(0) {
-        let prefix = format!("{} Syncing latest beta...      ", style("[3/5]").bold());
+        let prefix = padded_prefix_message(step, num_steps, "Syncing latest beta");
         if let Err(e) = sync_rustup_channel(
             path,
             &rustup.source,
@@ -704,12 +732,16 @@ pub fn sync(
             eprintln!("You will need to sync again to finish this download.");
         }
     } else {
-        eprintln!("{} Skipping syncing beta.", style("[3/5]").bold());
+        eprintln!(
+            "{} Skipping syncing beta.",
+            current_step_prefix(step, num_steps)
+        );
     }
 
     // Mirror nightly
+    step += 1;
     if rustup.keep_latest_nightlies != Some(0) {
-        let prefix = format!("{} Syncing latest nightly...   ", style("[4/5]").bold());
+        let prefix = padded_prefix_message(step, num_steps, "Syncing latest nightly");
         if let Err(e) = sync_rustup_channel(
             path,
             &rustup.source,
@@ -725,27 +757,70 @@ pub fn sync(
             eprintln!("You will need to sync again to finish this download.");
         }
     } else {
-        eprintln!("{} Skipping syncing nightly.", style("[4/5]").bold());
+        eprintln!(
+            "{} Skipping syncing nightly.",
+            current_step_prefix(step, num_steps)
+        );
+    }
+
+    // Mirror pinned rust versions
+    if let Some(pinned_versions) = &rustup.pinned_rust_versions {
+        for version in pinned_versions {
+            step += 1;
+            let prefix =
+                padded_prefix_message(step, num_steps, &format!("Syncing pinned rust {}", version));
+            if let Err(e) = sync_rustup_channel(
+                path,
+                &rustup.source,
+                rustup.download_threads,
+                prefix,
+                &version,
+                mirror.retries,
+                user_agent,
+                &platforms,
+            ) {
+                failures = true;
+                if let SyncError::Download(DownloadError::NotFound { .. }) = e {
+                    eprintln!(
+                        "{} Pinned rust version {} could not be found.",
+                        current_step_prefix(step, num_steps),
+                        version
+                    );
+                    return Err(MirrorError::Config(format!(
+                        "Pinned rust version {} could not be found",
+                        version
+                    )));
+                } else {
+                    eprintln!("Downloading pinned rust {} failed: {:?}", version, e);
+                    eprintln!("You will need to sync again to finish this download.");
+                }
+            }
+        }
     }
 
     // If all succeeds, clean files
+    step += 1;
     if rustup.keep_latest_stables == None
         && rustup.keep_latest_betas == None
         && rustup.keep_latest_nightlies == None
     {
-        eprintln!("{} Skipping cleaning files.", style("[5/5]").bold());
+        eprintln!(
+            "{} Skipping cleaning files.",
+            current_step_prefix(step, num_steps)
+        );
     } else if failures {
         eprintln!(
             "{} Skipping cleaning files due to download failures.",
-            style("[5/5]").bold()
+            current_step_prefix(step, num_steps)
         );
     } else {
-        let prefix = format!("{} Cleaning old files...       ", style("[5/5]").bold());
+        let prefix = padded_prefix_message(step, num_steps, "Cleaning old files");
         if let Err(e) = clean_old_files(
             path,
             rustup.keep_latest_stables,
             rustup.keep_latest_betas,
             rustup.keep_latest_nightlies,
+            rustup.pinned_rust_versions.as_ref(),
             prefix,
         ) {
             eprintln!("Cleaning old files failed: {:?}", e);
