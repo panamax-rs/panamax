@@ -370,6 +370,7 @@ pub fn sync_rustup_init(
 /// Get the rustup file downloads, in pairs of URLs and sha256 hashes.
 pub fn rustup_download_list(
     path: &Path,
+    download_dev: bool,
     platforms: &Platforms,
 ) -> Result<(String, Vec<(String, String)>), SyncError> {
     let channel_str = fs::read_to_string(path).map_err(DownloadError::Io)?;
@@ -380,6 +381,7 @@ pub fn rustup_download_list(
         channel
             .pkg
             .into_iter()
+            .filter(|(pkg_name, _)| download_dev || pkg_name == "rustc-dev")
             .flat_map(|(_, pkg)| {
                 pkg.target
                     .into_iter()
@@ -596,6 +598,7 @@ pub fn sync_rustup_channel(
     channel: &str,
     retries: usize,
     user_agent: &HeaderValue,
+    download_dev: bool,
     platforms: &Platforms,
 ) -> Result<(), SyncError> {
     // Download channel file
@@ -605,7 +608,7 @@ pub fn sync_rustup_channel(
     download_with_sha256_file(&channel_url, &channel_part_path, retries, true, user_agent)?;
 
     // Open toml file, find all files to download
-    let (date, files) = rustup_download_list(&channel_part_path, &platforms)?;
+    let (date, files) = rustup_download_list(&channel_part_path, download_dev, &platforms)?;
 
     // Create progress bar
     let (pb_thread, sender) = progress_bar(Some(files.len()), prefix);
@@ -660,6 +663,8 @@ pub fn sync(
     user_agent: &HeaderValue,
 ) -> Result<(), MirrorError> {
     let platforms = get_platforms(&rustup)?;
+    // Default to not downloading rustc-dev
+    let download_dev = rustup.download_dev.unwrap_or(false);
 
     let num_pinned_versions = rustup.pinned_rust_versions.as_ref().map_or(0, |v| v.len());
     let num_steps = 1 + // sync rustup-init
@@ -700,6 +705,7 @@ pub fn sync(
             "stable",
             mirror.retries,
             user_agent,
+            download_dev,
             &platforms,
         ) {
             failures = true;
@@ -725,6 +731,7 @@ pub fn sync(
             "beta",
             mirror.retries,
             user_agent,
+            download_dev,
             &platforms,
         ) {
             failures = true;
@@ -750,6 +757,7 @@ pub fn sync(
             "nightly",
             mirror.retries,
             user_agent,
+            download_dev,
             &platforms,
         ) {
             failures = true;
@@ -777,6 +785,7 @@ pub fn sync(
                 &version,
                 mirror.retries,
                 user_agent,
+                download_dev,
                 &platforms,
             ) {
                 failures = true;
