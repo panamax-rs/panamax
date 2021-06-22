@@ -59,9 +59,14 @@ pub fn sync_crates_repo(mirror_path: &Path, crates: &ConfigCrates) -> Result<(),
         clone_repository(fetch_opts, &crates.source_index, &repo_path)?
     } else {
         // Get (fetch) the branch's latest remote "master" commit
-        let repo = Repository::open(repo_path)?;
+        let repo = Repository::open(&repo_path)?;
         let mut remote = repo.find_remote("origin")?;
         remote.fetch(&["master"], Some(&mut fetch_opts), None)?;
+
+        // Set master to origin/master.
+        //
+        // Note that this means config.json changes will have to be rewritten on every sync.
+        fast_forward(&repo_path)?;
     }
 
     sender
@@ -88,8 +93,6 @@ pub fn update_crates_config(
 
 /// Perform a git fast-forward on the repository. This will destroy any local changes that have
 /// been made to the repo, and will make the local master identical to the remote master.
-///
-/// Note that this means config.json changes will have to be rewritten on every sync.
 fn fast_forward(repo_path: &Path) -> Result<(), IndexSyncError> {
     let repo = Repository::open(repo_path)?;
 
@@ -137,13 +140,7 @@ pub fn rewrite_config_json(repo_path: &Path, base_url: &str) -> Result<(), Index
     let refname = "refs/heads/master";
     let signature = Signature::now("Panamax", "panamax@panamax")?;
 
-    eprintln!(
-        "{}",
-        padded_prefix_message(3, 3, "Syncing index and config")
-    );
-
-    // Set master to origin/master.
-    fast_forward(&repo_path)?;
+    eprintln!("{}", padded_prefix_message(3, 3, "Syncing config"));
 
     let mut index = repo.index()?;
 
