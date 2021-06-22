@@ -1,7 +1,7 @@
 use crate::download::{download, DownloadError};
 use crate::mirror::{ConfigCrates, ConfigMirror};
 use crate::progress_bar::{padded_prefix_message, progress_bar, ProgressBarMessage};
-use git2::Repository;
+use git2::{Commit, Oid, Repository};
 use reqwest::header::HeaderValue;
 use scoped_threadpool::Pool;
 use serde::{Deserialize, Serialize};
@@ -9,6 +9,7 @@ use std::path::Path;
 use std::{
     fs,
     io::{self, BufRead, Cursor},
+    sync::{atomic, Arc},
 };
 use thiserror::Error;
 
@@ -23,6 +24,27 @@ pub enum SyncError {
     #[error("Git error: {0}")]
     GitError(#[from] git2::Error),
 }
+
+fn get_last_good_commit(path: &Path) -> io::Result<Option<String>> {
+    let file_path = path.join("last_good_commit");
+    match fs::read_to_string(file_path) {
+        Ok(text) => Ok(Some(text)),
+
+        Err(e) => {
+            if e.kind() == io::ErrorKind::NotFound {
+                Ok(None)
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
+fn set_last_good_commit(path: &Path, commit: Commit) -> io::Result<()> {
+    let file_path = path.join("last_good_commit");
+    fs::write(file_path, commit.id().to_string())
+}
+
 /// One entry found in a crates.io-index file.
 /// These files are formatted as lines of JSON.
 #[derive(Debug, Serialize, Deserialize)]
@@ -97,22 +119,22 @@ pub fn sync_crates_files(
         Some(crates.source.as_ref())
     };
 
+    let last_good_commit = get_last_good_commit(path)?
+        .map(|commit_hash| repo.find_commit(Oid::from_str(&commit_hash)?))
+        .transpose()?;
+    let last_good_commit_tree = last_good_commit.map(|commit| commit.tree()).transpose()?;
+
     // Find Reference for origin/master
     let origin_master = repo.find_reference("refs/remotes/origin/master")?;
-    let origin_master_tree = origin_master.peel_to_tree()?;
+    let origin_master = origin_master.peel_to_commit()?;
+    let origin_master_tree = origin_master.tree()?;
 
-    let master = repo.find_reference("refs/heads/master")?;
-    let master_tree = master.peel_to_tree()?;
-
-    // Perform a full scan if master and origin/master match
-    let do_full_scan = origin_master.peel_to_commit()?.id() == master.peel_to_commit()?.id();
-
-    // Diff between master and origin/master (i.e. everything since the last fetch)
-    let diff = if do_full_scan {
-        repo.diff_tree_to_tree(None, Some(&origin_master_tree), None)?
-    } else {
-        repo.diff_tree_to_tree(Some(&master_tree), Some(&origin_master_tree), None)?
-    };
+    // Diff between last good commit and origin/master
+    let diff = repo.diff_tree_to_tree(
+        last_good_commit_tree.as_ref(),
+        Some(&origin_master_tree),
+        None,
+    )?;
 
     // Run one pass to figure out a total count
     let mut count = 0;
@@ -157,6 +179,7 @@ pub fn sync_crates_files(
     let (pb_thread, sender) = progress_bar(Some(count), prefix);
 
     let mut removed_crates = vec![];
+    let any_errors = Arc::new(atomic::AtomicBool::new(false));
 
     // Download crates multithreaded
     Pool::new(crates.download_threads as u32).scoped(|scoped| {
@@ -197,6 +220,7 @@ pub fn sync_crates_files(
                     let line = line.unwrap();
                     let c: CrateEntry = serde_json::from_str(&line).unwrap();
                     let s = sender.clone();
+                    let any_errors = Arc::clone(&any_errors);
                     scoped.execute(move || {
                         match sync_one_crate_entry(
                             path,
@@ -221,6 +245,8 @@ pub fn sync_crates_files(
                                     &c.name, &c.vers, e
                                 )))
                                 .expect("Channel send should not fail");
+
+                                any_errors.store(true, atomic::Ordering::Relaxed);
                             }
                         }
                         s.send(ProgressBarMessage::Increment)
@@ -241,6 +267,13 @@ pub fn sync_crates_files(
     for rc in removed_crates {
         // Try to remove the file, but ignore it if it doesn't exist
         let _ = fs::remove_file(repo_path.join(rc));
+    }
+
+    let any_errors = Arc::try_unwrap(any_errors)
+        .expect("All cloned references to any_errors should have been dropped");
+    let any_errors = any_errors.into_inner();
+    if !any_errors {
+        set_last_good_commit(path, origin_master)?;
     }
 
     sender
