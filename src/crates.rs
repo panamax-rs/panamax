@@ -5,7 +5,8 @@ use git2::Repository;
 use reqwest::header::HeaderValue;
 use scoped_threadpool::Pool;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::fs::read_dir;
+use std::path::{Path, PathBuf};
 use std::{
     fs,
     io::{self, BufRead, Cursor},
@@ -56,11 +57,32 @@ pub fn sync_one_crate_entry(
         )
     };
 
+    let crate_name = format!("{}-{}.crate", &crate_entry.name, &crate_entry.vers);
+
+    let crate_path = match crate_entry.name.len() {
+        1 => PathBuf::from("1"),
+        2 => PathBuf::from("2"),
+        3 => PathBuf::from("3"),
+        n if n >= 4 => {
+            let first_two = &crate_entry
+                .name
+                .get(0..2)
+                .expect("crate name len >= 4 but couldn't get first 2 chars");
+            let second_two = &crate_entry
+                .name
+                .get(2..4)
+                .expect("crate name len >= 4 but couldn't get second 2 chars");
+            [first_two, second_two].iter().collect()
+        }
+        _ => return Err(DownloadError::BadCrate("Empty crate name".into())),
+    };
+
     let file_path = path
         .join("crates")
+        .join(crate_path)
         .join(&crate_entry.name)
         .join(&crate_entry.vers)
-        .join("download");
+        .join(crate_name);
 
     download(
         &url[..],
@@ -185,7 +207,8 @@ pub fn sync_crates_files(
                 // Get the data for this crate file
                 let oid = df.id();
                 if oid.is_zero() {
-                    // The crate was removed, continue to next crate
+                    // The crate was removed, continue to next crate.
+                    // Note that this does not include yanked crates.
                     removed_crates.push(p.to_path_buf());
                     return true;
                 }
@@ -249,4 +272,37 @@ pub fn sync_crates_files(
     pb_thread.join().expect("Thread join should not fail");
 
     Ok(())
+}
+
+/// Detect if the crates directory is using the old format.
+pub fn is_new_crates_format(path: &Path) -> Result<bool, io::Error> {
+    if !path.exists() {
+        // Path doesn't exist, so we can start with a clean slate.
+        return Ok(true);
+    }
+
+    for crate_dir in read_dir(path)? {
+        let crate_dir = crate_dir?;
+        if !crate_dir.file_type()?.is_dir() {
+            // Ignore any files in the directory. Only look at other directories.
+            continue;
+        }
+
+        let dir_name = crate_dir
+            .file_name()
+            .into_string()
+            .map_err(|_| io::ErrorKind::Other)?;
+        match dir_name.as_str() {
+            // 1-letter crate names cannot be numbers, so this must be new format.
+            "1" | "2" | "3" => continue,
+            // 2-letter directories are used for crates longer than 3 characters.
+            x if x.len() == 2 => continue,
+            // Unrecognized directory found, might be crate in old format.
+            _ => {
+                return Ok(false);
+            }
+        };
+    }
+
+    Ok(true)
 }
