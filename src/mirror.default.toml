@@ -54,6 +54,9 @@ keep_latest_nightlies = 1
 pinned_rust_versions = [
 ]
 
+# Whether to download the rustc-dev component
+download_dev = false
+
 # The platforms to include in the mirror
 # These lists can be empty to mirror nothing, but if the setting is not set, it will default to all platforms.
 # Note: These platforms should match the list on https://rust-lang.github.io/rustup/installation/other.html

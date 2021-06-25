@@ -30,6 +30,7 @@ pub struct ConfigRustup {
     pub sync: bool,
     pub download_threads: usize,
     pub source: String,
+    pub download_dev: Option<bool>,
     pub platforms_unix: Option<Vec<String>>,
     pub platforms_windows: Option<Vec<String>>,
     pub keep_latest_stables: Option<usize>,
