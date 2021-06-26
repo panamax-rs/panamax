@@ -55,7 +55,7 @@ pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<(Pa
                 get_rustup_platforms(mirror_path)
                     .await
                     .map(|platforms| IndexTemplate {
-                        platforms: platforms,
+                        platforms,
                         host: authority
                             .map(|a| format!("{}{}", protocol, a.as_str()))
                             .unwrap_or_else(|| "http://panamax.internal".to_string()),
@@ -75,7 +75,7 @@ pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<(Pa
             .and_then(|path: Tail| async move {
                 STATIC_DIR
                     .get_file(path.as_str())
-                    .ok_or(warp::reject::not_found())
+                    .ok_or_else(warp::reject::not_found)
                     .map(|f| f.contents().to_vec())
             });
 
@@ -212,8 +212,8 @@ async fn get_crate_file(
         2 => PathBuf::from("2"),
         3 => PathBuf::from("3"),
         n if n >= 4 => {
-            let first_two = name.get(0..2).ok_or_else(|| warp::reject::not_found())?;
-            let second_two = name.get(2..4).ok_or_else(|| warp::reject::not_found())?;
+            let first_two = name.get(0..2).ok_or_else(warp::reject::not_found)?;
+            let second_two = name.get(2..4).ok_or_else(warp::reject::not_found)?;
 
             [first_two, second_two].iter().collect()
         }
@@ -313,7 +313,7 @@ where
     cmd.stdout(Stdio::piped());
     cmd.stdin(Stdio::piped());
 
-    let p = cmd.spawn().map_err(|e| ServeError::from(e))?;
+    let p = cmd.spawn().map_err(ServeError::from)?;
 
     // Handle sending git client body to http-backend, if any
     let mut git_input = p.stdin.expect("Process should always have stdin");
@@ -321,7 +321,7 @@ where
         git_input
             .write_all_buf(&mut buf)
             .await
-            .map_err(|e| ServeError::from(e))?;
+            .map_err(ServeError::from)?;
     }
 
     let mut git_output = BufReader::new(p.stdout.expect("Process should always have stdout"));
@@ -333,7 +333,7 @@ where
         git_output
             .read_line(&mut line)
             .await
-            .map_err(|e| ServeError::from(e))?;
+            .map_err(ServeError::from)?;
 
         let line = line.trim_end();
         if line.is_empty() {
@@ -360,7 +360,7 @@ where
     let (sender, body) = Body::channel();
     tokio::spawn(send_git(sender, git_output));
 
-    let resp = resp.body(body).map_err(|e| ServeError::from(e))?;
+    let resp = resp.body(body).map_err( ServeError::from)?;
     Ok(resp)
 }
 
