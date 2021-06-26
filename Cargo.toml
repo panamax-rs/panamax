@@ -32,6 +32,8 @@ askama_warp = "0.11.0"
 include_dir = "0.6.0"
 bytes = "1.0.1"
 tokio-stream = "0.1.6"
+tokio-util = "0.6.7"
+futures-util = "0.3.15"
 
 [features]
 default = []

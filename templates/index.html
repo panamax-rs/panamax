@@ -1,12 +1,13 @@
 <head>
     <meta charset="utf-8">
     <title>Panamax</title>
-    <link rel="stylesheet" href="static/normalize.css">
-    <link rel="stylesheet" href="static/rustup.css">
-    <link rel="stylesheet" href="static/panamax.css">
+    <link rel="stylesheet" href="static/css/normalize.css">
+    <link rel="stylesheet" href="static/css/rustup.css">
+    <link rel="stylesheet" href="static/css/panamax.css">
+    <script src="static/js/panamax.js"></script>
 </head>
 
-<body id="idx">
+<body id="idx" onload="platform_change()">
     <p id="pitch">
         <em>Panamax</em> is a mirror for <br />
         <a href="https://rustup.rs">rustup</a> and <a href="https://crates.io">crates.io</a>.
@@ -24,24 +25,23 @@ source ~/.bashrc</pre>
         <div class="copy-container">
             <pre>mkdir -p ~/.cargo
 
-cat &lt;&lt;EOT >> ~/.cargo/config
+cat &lt;&lt;EOT > ~/.cargo/config
 [source.panamax]
 registry = "{{ host }}/git/crates.io-index"
 [source.crates-io]
 replace-with = "panamax"
 EOT</pre>
         </div>
-        <p>Run <code>rustup-init</code>, and you're done!</p>
-        <select name="platform">
-            {% for platform in platforms %}
-                <option>{{ platform }}</option>
-            {% endfor %}
+        <p>Finally, run <code>rustup-init</code>, and you're done!</p>
+        <select id="rustup-selected-platform" name="platform" onchange="platform_change()">
+            {% for (exe, platform) in platforms %}<option value="{{ exe }}">{{ platform }}</option>{% endfor %}
         </select>
 
         <div class="copy-container">
-            <pre>wget {{ host }}/rustup/dist/(replace me with selected platform)/rustup-init
-                chmod +x rustup-init
-                ./rustup-init</pre>
+            <pre id="rustup-text">wget <a href="{{ host }}/rustup/dist/(replace with selected platform)/rustup-init">{{ host }}/rustup/dist/(replace with selected platform)/rustup-init</a>
+chmod +x rustup-init
+./rustup-init</pre>
         </div>
     </div>
+    <div class="display-none" id="panamax-host">{{ host }}</div>
 </body>
