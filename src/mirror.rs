@@ -1,4 +1,5 @@
-use std::path::Path;
+use std::net::{IpAddr, SocketAddr};
+use std::path::{Path, PathBuf};
 use std::{fs, io};
 
 use console::style;
@@ -17,6 +18,8 @@ pub enum MirrorError {
     Parse(#[from] toml::de::Error),
     #[error("Config file error: {0}")]
     Config(String),
+    #[error("Command line error: {0}")]
+    CmdLine(String),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -243,4 +246,29 @@ pub fn sync_crates(
     }
 
     eprintln!("{}", style("Syncing Crates repositories complete!").bold());
+}
+
+pub fn serve(
+    path: PathBuf,
+    listen: Option<IpAddr>,
+    port: Option<u16>,
+    cert_path: Option<PathBuf>,
+    key_path: Option<PathBuf>,
+) -> Result<(), MirrorError> {
+    let listen = listen.unwrap_or_else(|| "::".parse().unwrap());
+    let port = port.unwrap_or_else(|| if cert_path.is_some() { 8443 } else { 8080 });
+    let socket_addr = SocketAddr::new(listen, port);
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+
+    match (cert_path, key_path) {
+        (Some(cert_path), Some(key_path)) => {
+            rt.block_on(crate::serve::serve(path, socket_addr, Some((cert_path, key_path))))
+        }
+        (None, None) => rt.block_on(crate::serve::serve(path, socket_addr, None)),
+        (Some(_), None) => return Err(MirrorError::CmdLine("cert_path set but key_path not set.".to_string())),
+        (None, Some(_)) => return Err(MirrorError::CmdLine("key_path set but cert_path not set.".to_string())),
+    };
+
+    Ok(())
 }

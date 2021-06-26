@@ -1,0 +1,219 @@
+/*! rustup.css | Apache 2.0 + MIT License | https://github.com/rust-lang/rustup/blob/master/www/rustup.css */
+
+@font-face {
+    font-family: 'Fira Sans';
+    font-style: normal;
+    font-weight: 300;
+    src: local('Fira Sans Light'), url("fonts/FiraSans-Light.woff") format('woff');
+}
+
+@font-face {
+    font-family: 'Fira Sans';
+    font-style: normal;
+    font-weight: 400;
+    src: local('Fira Sans'), url("fonts/FiraSans-Regular.woff") format('woff');
+}
+
+@font-face {
+    font-family: 'Fira Sans';
+    font-style: normal;
+    font-weight: 500;
+    src: local('Fira Sans Medium'), url("fonts/FiraSans-Medium.woff") format('woff');
+}
+
+@font-face {
+    font-family: 'Work Sans';
+    font-style: normal;
+    font-weight: 500;
+    src: local('Work Sans Medium'), url("fonts/WorkSans-Medium.ttf") format('ttf');
+}
+
+@font-face {
+    font-family: 'Inconsolata';
+    font-style: normal;
+    font-weight: 400;
+    src: local('Inconsolata Regular'), url("fonts/Inconsolata-Regular.ttf") format('ttf');
+}
+
+body {
+    margin-top: 2em;
+    background-color: white;
+    color: #515151;
+    font-family: "Fira Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-weight: 300;
+    font-size: 25px;
+}
+
+pre {
+    font-family: Inconsolata, Menlo, Monaco, Consolas, "Courier New", monospace;
+    font-weight: 400;
+}
+
+body#idx #pitch>a {
+    font-weight: 500;
+    line-height: 2em;
+}
+
+a {
+    color: #428bca;
+    text-decoration: none;
+}
+
+a:hover {
+    color: rgb(42, 100, 150);
+}
+
+body#idx>* {
+    margin-left: auto;
+    margin-right: auto;
+    text-align: center;
+    width: 35em;
+}
+
+body#idx>#pitch {
+    width: 35rem;
+}
+
+#pitch em {
+    font-style: normal;
+    font-weight: 400;
+}
+
+body#idx p {
+    margin-top: 2em;
+    margin-bottom: 2em;
+}
+
+body#idx p.other-platforms-help {
+    font-size: 0.6em;
+}
+
+.instructions {
+    background-color: rgb(250, 250, 250);
+    margin-left: auto;
+    margin-right: auto;
+    text-align: center;
+    border-radius: 3px;
+    border: 1px solid rgb(204, 204, 204);
+    box-shadow: 0px 1px 4px 0px rgb(204, 204, 204);
+}
+
+.instructions>* {
+    width: 40rem;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+hr {
+    margin-top: 2em;
+    margin-bottom: 2em;
+}
+
+#platform-instructions-unix>div>pre,
+#platform-instructions-win32>div>pre,
+#platform-instructions-win64>div>pre,
+#platform-instructions-default>div>div>pre,
+#platform-instructions-unknown>div>div>pre {
+    background-color: #515151;
+    color: white;
+    margin-left: auto;
+    margin-right: auto;
+    padding: 1rem;
+    width: 45rem;
+    text-align: center;
+    border-radius: 3px;
+    box-shadow: inset 0px 0px 20px 0px #333333;
+    overflow-x: scroll;
+    font-size: 0.6em;
+    height: 27px;
+}
+
+#platform-instructions-unix div.copy-container,
+#platform-instructions-win32 div.copy-container,
+#platform-instructions-win64 div.copy-container,
+#platform-instructions-default div.copy-container,
+#platform-instructions-unknown div.copy-container {
+    display: flex;
+    align-items: center;
+}
+
+#platform-instructions-unix button.copy-button,
+#platform-instructions-win32 button.copy-button,
+#platform-instructions-win64 button.copy-button,
+#platform-instructions-default button.copy-button,
+#platform-instructions-unknown button.copy-button {
+    height: 60px;
+    margin: 1px;
+    padding-right: 5px;
+    border-radius: 3px;
+}
+
+#platform-instructions-unix div.copy-icon,
+#platform-instructions-win32 div.copy-icon,
+#platform-instructions-win64 div.copy-icon,
+#platform-instructions-default div.copy-icon,
+#platform-instructions-unknown div.copy-icon {
+    margin-top: 12px;
+}
+
+#platform-instructions-unix div.copy-button-text,
+#platform-instructions-win32 div.copy-button-text,
+#platform-instructions-win64 div.copy-button-text,
+#platform-instructions-default div.copy-button-text,
+#platform-instructions-unknown div.copy-button-text {
+    font-size: 10px;
+    color: green;
+    width: 41px;
+    height: 15px;
+}
+
+#platform-instructions-win32 a.windows-download,
+#platform-instructions-win64 a.windows-download,
+#platform-instructions-default a.windows-download,
+#platform-instructions-unknown a.windows-download {
+    display: block;
+    padding-top: 0.4rem;
+    padding-bottom: 0.6rem;
+    font-family: "Work Sans", "Fira Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-weight: 500;
+    letter-spacing: 0.1rem;
+}
+
+
+/* This is the box that prints navigator.platform, navigator.appVersion values */
+
+#platform-instructions-unknown>div {
+    font-size: 16px;
+    line-height: 2rem;
+}
+
+#about {
+    font-size: 16px;
+    line-height: 2em;
+}
+
+#about>img {
+    width: 30px;
+    height: 30px;
+    transform: translateY(11px);
+}
+
+#platform-button {
+    background-color: #515151;
+    color: white;
+    margin-left: auto;
+    margin-right: auto;
+    padding: 1em;
+}
+
+.display-none {
+    display: none;
+}
+
+.display-block {
+    display: block;
+}
+
+.display-inline {
+    display: inline;
+}
