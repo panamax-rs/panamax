@@ -360,7 +360,7 @@ where
     let (sender, body) = Body::channel();
     tokio::spawn(send_git(sender, git_output));
 
-    let resp = resp.body(body).map_err( ServeError::from)?;
+    let resp = resp.body(body).map_err(ServeError::from)?;
     Ok(resp)
 }
 
