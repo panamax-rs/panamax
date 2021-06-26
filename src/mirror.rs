@@ -255,11 +255,14 @@ pub fn serve(
     cert_path: Option<PathBuf>,
     key_path: Option<PathBuf>,
 ) -> Result<(), MirrorError> {
-    let listen = listen.unwrap_or_else(|| "::".parse().unwrap());
+    let listen = listen.unwrap_or_else(|| {
+        "::".parse()
+            .expect(":: IPv6 address should never fail to parse")
+    });
     let port = port.unwrap_or_else(|| if cert_path.is_some() { 8443 } else { 8080 });
     let socket_addr = SocketAddr::new(listen, port);
 
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new()?;
 
     match (cert_path, key_path) {
         (Some(cert_path), Some(key_path)) => rt.block_on(crate::serve::serve(
