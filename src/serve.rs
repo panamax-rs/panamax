@@ -47,6 +47,8 @@ impl Reject for ServeError {}
 pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<(PathBuf, PathBuf)>) {
     let index_path = path.clone();
     let is_tls = tls_paths.is_some();
+
+    // Handle the homepage
     let index = warp::path::end().and(warp::host::optional()).and_then(
         move |authority: Option<Authority>| {
             let mirror_path = index_path.clone();
@@ -69,6 +71,7 @@ pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<(Pa
         },
     );
 
+    // Handle all files baked into the binary at /static
     let static_dir =
         warp::path::path("static")
             .and(warp::path::tail())
@@ -81,7 +84,8 @@ pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<(Pa
 
     let dist_dir = warp::path::path("dist").and(warp::fs::dir(path.join("dist")));
     let rustup_dir = warp::path::path("rustup").and(warp::fs::dir(path.join("rustup")));
-    
+
+    // Handle crates requests in the format of "/crates/ripgrep/0.1.0/download"
     let crates_mirror_path = path.clone();
     let crates_dir_native_format = warp::path!("crates" / String / String / "download").and_then(
         move |name: String, version: String| {
@@ -90,6 +94,7 @@ pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<(Pa
         },
     );
 
+    // Handle crates requests in the format of "/crates/ripgrep/ripgrep-0.1.0.crate"
     let crates_mirror_path_2 = path.clone();
     let crates_dir_condensed_format = warp::path!("crates" / String / String).and_then(
         move |name: String, crate_file: String| {
@@ -104,6 +109,7 @@ pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<(Pa
         },
     );
 
+    // Handle git client requests to /git/crates.io-index
     let git_mirror_path = path.clone();
     let git = warp::path("git")
         .and(warp::path("crates.io-index"))
@@ -182,6 +188,8 @@ async fn get_rustup_platforms(path: PathBuf) -> io::Result<Vec<(bool, String)>> 
 
     let mut output = vec![];
 
+    // Look at the rustup/dist directory for all rustup-init and rustup-init.exe files.
+    // Also return if the rustup-init file is a .exe or not.
     let mut rd = tokio::fs::read_dir(rustup_path).await?;
     while let Some(entry) = rd.next_entry().await? {
         if entry.metadata().await?.is_dir() {
@@ -196,6 +204,7 @@ async fn get_rustup_platforms(path: PathBuf) -> io::Result<Vec<(bool, String)>> 
         }
     }
 
+    // Sort by name, keeping non-exe versions at the top.
     output.sort();
 
     Ok(output)
@@ -324,9 +333,8 @@ where
             .map_err(ServeError::from)?;
     }
 
-    let mut git_output = BufReader::new(p.stdout.expect("Process should always have stdout"));
-
     // Collect headers from git CGI output
+    let mut git_output = BufReader::new(p.stdout.expect("Process should always have stdout"));
     let mut headers = HashMap::new();
     loop {
         let mut line = String::new();

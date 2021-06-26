@@ -24,6 +24,8 @@ Panamax is available as a docker image, so you can run:
 $ docker run -it -v /path/to/mirror/:/mirror k3d3/panamax init /mirror
 (Modify /path/to/mirror/mirror.toml as needed)
 $ docker run -it -v /path/to/mirror/:/mirror k3d3/panamax sync /mirror
+(Once synced, serve the mirror)
+$ docker run -it -v /path/to/mirror/:/mirror -p8080:8080 k3d3/panamax serve /mirror
 ```
 
 Alternatively, you can run panamax in a bare-metal environment like below.
@@ -79,9 +81,18 @@ Additionally, this mirror can continually by synchronized in the future - one re
 
 ## Server
 
-Panamax grabs the files needed to make a full mirror, however once the mirror directory is at its destination, it needs to be hosted as a server. Panamax doesn't provide this, however it should be fairly simple to host a mirror - everything can be accessed via HTTP, with the exception of the `crates.io-index` which uses git.
+Panamax provides a warp-based HTTP(S) server that can handle serving a Rust mirror fast and at scale. This is the recommended way to serve the mirror.
 
-A sample `nginx` configuration file, `nginx.sample.conf` has been provided in the repository which will handle hosting a mirror server. Use this in the `sites-available` nginx directory, or copy it into `nginx.conf`.
+```
+$ panamax serve my-mirror
+Running HTTP on [::]:8080
+```
+
+The server's index page provides all the instructions needed on how to set up a Rust client that uses this mirror.
+
+If you would prefer having these instructions elsewhere, the rest of this README will describe the setup process in more detail.
+
+Additionally, if you would prefer hosting a server with nginx, there is a sample nginx configuration in the repository, at `nginx.sample.conf`.
 
 ## Configuring `rustup` and `cargo`
 
