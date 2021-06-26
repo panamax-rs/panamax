@@ -81,7 +81,7 @@ pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<(Pa
 
     let dist_dir = warp::path::path("dist").and(warp::fs::dir(path.join("dist")));
     let rustup_dir = warp::path::path("rustup").and(warp::fs::dir(path.join("rustup")));
-    // TODO: crates_dir needs to be translated
+    
     let crates_mirror_path = path.clone();
     let crates_dir_native_format = warp::path!("crates" / String / String / "download").and_then(
         move |name: String, version: String| {
