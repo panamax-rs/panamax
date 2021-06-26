@@ -227,8 +227,13 @@ async fn get_crate_file(
         .join(version)
         .join(format!("{}-{}.crate", name, version));
 
-    let file = File::open(full_path).await.map_err(|_| warp::reject::not_found())?;
-    let meta = file.metadata().await.map_err(|_| warp::reject::not_found())?;
+    let file = File::open(full_path)
+        .await
+        .map_err(|_| warp::reject::not_found())?;
+    let meta = file
+        .metadata()
+        .await
+        .map_err(|_| warp::reject::not_found())?;
     let stream = FramedRead::new(file, BytesCodec::new()).map_ok(BytesMut::freeze);
 
     let body = Body::wrap_stream(stream);

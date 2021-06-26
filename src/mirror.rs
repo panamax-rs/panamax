@@ -262,12 +262,22 @@ pub fn serve(
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     match (cert_path, key_path) {
-        (Some(cert_path), Some(key_path)) => {
-            rt.block_on(crate::serve::serve(path, socket_addr, Some((cert_path, key_path))))
-        }
+        (Some(cert_path), Some(key_path)) => rt.block_on(crate::serve::serve(
+            path,
+            socket_addr,
+            Some((cert_path, key_path)),
+        )),
         (None, None) => rt.block_on(crate::serve::serve(path, socket_addr, None)),
-        (Some(_), None) => return Err(MirrorError::CmdLine("cert_path set but key_path not set.".to_string())),
-        (None, Some(_)) => return Err(MirrorError::CmdLine("key_path set but cert_path not set.".to_string())),
+        (Some(_), None) => {
+            return Err(MirrorError::CmdLine(
+                "cert_path set but key_path not set.".to_string(),
+            ))
+        }
+        (None, Some(_)) => {
+            return Err(MirrorError::CmdLine(
+                "key_path set but cert_path not set.".to_string(),
+            ))
+        }
     };
 
     Ok(())
