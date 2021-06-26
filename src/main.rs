@@ -50,7 +50,7 @@ enum Panamax {
         #[structopt(parse(from_os_str))]
         path: PathBuf,
 
-        /// IP address to listen on. Defaults to 0.0.0.0.
+        /// IP address to listen on. Defaults to listening on everything.
         #[structopt(short, long)]
         listen: Option<IpAddr>,
 
