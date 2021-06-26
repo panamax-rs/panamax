@@ -212,16 +212,8 @@ async fn get_crate_file(
         2 => PathBuf::from("2"),
         3 => PathBuf::from("3"),
         n if n >= 4 => {
-            let first_two = if let Some(first_two) = name.get(0..2) {
-                first_two
-            } else {
-                return Err(warp::reject::not_found());
-            };
-            let second_two = if let Some(second_two) = name.get(2..4) {
-                second_two
-            } else {
-                return Err(warp::reject::not_found());
-            };
+            let first_two = name.get(0..2).ok_or_else(|| warp::reject::not_found())?;
+            let second_two = name.get(2..4).ok_or_else(|| warp::reject::not_found())?;
 
             [first_two, second_two].iter().collect()
         }
@@ -235,17 +227,8 @@ async fn get_crate_file(
         .join(version)
         .join(format!("{}-{}.crate", name, version));
 
-    let file = if let Ok(file) = File::open(full_path).await {
-        file
-    } else {
-        return Err(warp::reject::not_found());
-    };
-
-    let meta = if let Ok(meta) = file.metadata().await {
-        meta
-    } else {
-        return Err(warp::reject::not_found());
-    };
+    let file = File::open(full_path).await.map_err(|_| warp::reject::not_found())?;
+    let meta = file.metadata().await.map_err(|_| warp::reject::not_found())?;
     let stream = FramedRead::new(file, BytesCodec::new()).map_ok(BytesMut::freeze);
 
     let body = Body::wrap_stream(stream);
