@@ -1,5 +1,3 @@
-console.log("hi")
-
 function rustup_text_unix(host, platform) {
     return `wget <a href="${host}/rustup/dist/${platform}/rustup-init">${host}/rustup/dist/${platform}/rustup-init</a>
 chmod +x rustup-init

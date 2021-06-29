@@ -34,7 +34,7 @@ EOT</pre>
         </div>
         <p>Finally, run <code>rustup-init</code>, and you're done!</p>
         <select id="rustup-selected-platform" name="platform" onchange="platform_change()">
-            {% for (exe, platform) in platforms %}<option value="{{ exe }}">{{ platform }}</option>{% endfor %}
+            {% for platform in platforms %}<option value="{{ platform.is_exe }}">{{ platform.platform_triple }}</option>{% endfor %}
         </select>
 
         <div class="copy-container">

@@ -9,6 +9,7 @@ use thiserror::Error;
 
 use crate::crates::is_new_crates_format;
 use crate::crates_index::rewrite_config_json;
+use crate::serve::TlsConfig;
 
 #[derive(Error, Debug)]
 pub enum MirrorError {
@@ -268,7 +269,7 @@ pub fn serve(
         (Some(cert_path), Some(key_path)) => rt.block_on(crate::serve::serve(
             path,
             socket_addr,
-            Some((cert_path, key_path)),
+            Some(TlsConfig { cert_path, key_path }),
         )),
         (None, None) => rt.block_on(crate::serve::serve(path, socket_addr, None)),
         (Some(_), None) => {

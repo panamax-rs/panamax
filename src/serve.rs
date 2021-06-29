@@ -21,10 +21,21 @@ use warp::{
     Filter, Rejection, Stream,
 };
 
+pub struct TlsConfig {
+    pub cert_path: PathBuf,
+    pub key_path: PathBuf,
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+pub struct Platform {
+    is_exe: bool,
+    platform_triple: String,
+}
+
 #[derive(Template)]
 #[template(path = "index.html")]
 struct IndexTemplate {
-    platforms: Vec<(bool, String)>,
+    platforms: Vec<Platform>,
     host: String,
 }
 
@@ -44,7 +55,7 @@ pub enum ServeError {
 
 impl Reject for ServeError {}
 
-pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<(PathBuf, PathBuf)>) {
+pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<TlsConfig>) {
     let index_path = path.clone();
     let is_tls = tls_paths.is_some();
 
@@ -71,7 +82,7 @@ pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<(Pa
         },
     );
 
-    // Handle all files baked into the binary at /static
+    // Handle all files baked into the binary with include_dir, at /static
     let static_dir =
         warp::path::path("static")
             .and(warp::path::tail())
@@ -86,6 +97,7 @@ pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<(Pa
     let rustup_dir = warp::path::path("rustup").and(warp::fs::dir(path.join("rustup")));
 
     // Handle crates requests in the format of "/crates/ripgrep/0.1.0/download"
+    // This format is the default for cargo, and will be used if an external process rewrites config.json in crates.io-index
     let crates_mirror_path = path.clone();
     let crates_dir_native_format = warp::path!("crates" / String / String / "download").and_then(
         move |name: String, version: String| {
@@ -95,6 +107,7 @@ pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<(Pa
     );
 
     // Handle crates requests in the format of "/crates/ripgrep/ripgrep-0.1.0.crate"
+    // This format is used by Panamax, and/or is used if config.json contains "/crates/{crate}/{crate}-{version}.crate"
     let crates_mirror_path_2 = path.clone();
     let crates_dir_condensed_format = warp::path!("crates" / String / String).and_then(
         move |name: String, crate_file: String| {
@@ -166,7 +179,7 @@ pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<(Pa
         .or(git_no_query);
 
     match tls_paths {
-        Some((cert_path, key_path)) => {
+        Some(TlsConfig{ cert_path, key_path}) => {
             println!("Running TLS on {}", socket_addr);
             warp::serve(routes)
                 .tls()
@@ -183,7 +196,7 @@ pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<(Pa
 }
 
 /// Get all rustup platforms available on the mirror.
-async fn get_rustup_platforms(path: PathBuf) -> io::Result<Vec<(bool, String)>> {
+async fn get_rustup_platforms(path: PathBuf) -> io::Result<Vec<Platform>> {
     let rustup_path = path.join("rustup/dist");
 
     let mut output = vec![];
@@ -194,11 +207,11 @@ async fn get_rustup_platforms(path: PathBuf) -> io::Result<Vec<(bool, String)>> 
     while let Some(entry) = rd.next_entry().await? {
         if entry.metadata().await?.is_dir() {
             if let Some(name) = entry.file_name().to_str() {
-                let name = name.to_string();
+                let platform_triple = name.to_string();
                 if entry.path().join("rustup-init").exists() {
-                    output.push((false, name));
+                    output.push(Platform { is_exe: false, platform_triple });
                 } else if entry.path().join("rustup-init.exe").exists() {
-                    output.push((true, name));
+                    output.push(Platform { is_exe: true, platform_triple });
                 }
             }
         }
