@@ -269,7 +269,10 @@ pub fn serve(
         (Some(cert_path), Some(key_path)) => rt.block_on(crate::serve::serve(
             path,
             socket_addr,
-            Some(TlsConfig { cert_path, key_path }),
+            Some(TlsConfig {
+                cert_path,
+                key_path,
+            }),
         )),
         (None, None) => rt.block_on(crate::serve::serve(path, socket_addr, None)),
         (Some(_), None) => {
