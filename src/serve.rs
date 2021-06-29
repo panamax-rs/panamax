@@ -220,8 +220,8 @@ async fn get_crate_file(
     name: &str,
     version: &str,
 ) -> Result<Response<Body>, Rejection> {
-
-    let full_path = get_crate_path(&mirror_path, name, version).ok_or_else(|| warp::reject::not_found())?;
+    let full_path =
+        get_crate_path(&mirror_path, name, version).ok_or_else(|| warp::reject::not_found())?;
 
     let file = File::open(full_path)
         .await

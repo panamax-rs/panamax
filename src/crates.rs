@@ -283,25 +283,29 @@ pub fn is_new_crates_format(path: &Path) -> Result<bool, io::Error> {
     Ok(true)
 }
 
-pub fn get_crate_path(mirror_path: &Path, crate_name: &str, crate_version: &str) -> Option<PathBuf> {
+pub fn get_crate_path(
+    mirror_path: &Path,
+    crate_name: &str,
+    crate_version: &str,
+) -> Option<PathBuf> {
     let crate_path = match crate_name.len() {
         1 => PathBuf::from("1"),
         2 => PathBuf::from("2"),
         3 => PathBuf::from("3"),
         n if n >= 4 => {
-            let first_two = crate_name
-                .get(0..2)?;
-            let second_two = crate_name
-                .get(2..4)?;
+            let first_two = crate_name.get(0..2)?;
+            let second_two = crate_name.get(2..4)?;
             [first_two, second_two].iter().collect()
         }
         _ => return None,
     };
 
-    Some(mirror_path
-        .join("crates")
-        .join(crate_path)
-        .join(crate_name)
-        .join(crate_version)
-        .join(format!("{}-{}.crate", crate_name, crate_version)))
+    Some(
+        mirror_path
+            .join("crates")
+            .join(crate_path)
+            .join(crate_name)
+            .join(crate_version)
+            .join(format!("{}-{}.crate", crate_name, crate_version)),
+    )
 }
