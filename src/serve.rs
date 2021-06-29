@@ -123,51 +123,32 @@ pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<Tls
     );
 
     // Handle git client requests to /git/crates.io-index
-    let git_mirror_path = path.clone();
+    let path_for_git = path.clone();
     let git = warp::path("git")
         .and(warp::path("crates.io-index"))
         .and(warp::path::tail())
         .and(warp::method())
         .and(warp::header::optional::<String>("Content-Type"))
-        .and(warp::query::raw())
         .and(warp::addr::remote())
         .and(warp::body::stream())
+        .and(warp::query::raw().or_else(|_| async { Ok::<(String,), Rejection>((String::new(),)) }))
         .and_then(
-            move |path_tail, method, content_type, query, remote, body| {
-                let mirror_path = git_mirror_path.clone();
+            move |path_tail, method, content_type, remote, body, query| {
+                let mirror_path = path_for_git.clone();
                 async move {
                     handle_git(
                         mirror_path,
                         path_tail,
                         method,
                         content_type,
-                        query,
                         remote,
                         body,
+                        query,
                     )
                     .await
                 }
             },
         );
-
-    let git_nq_mirror_path = path.clone();
-    // query::raw() seems to expect a non-empty query string
-    // so create a separate set of filters for when it's empty
-    let git_no_query = warp::path("git")
-        .and(warp::path("crates.io-index"))
-        .and(warp::path::tail())
-        .and(warp::method())
-        .and(warp::header::optional::<String>("Content-Type"))
-        .and(warp::addr::remote())
-        .and(warp::body::stream())
-        .and_then(move |path_tail, method, content_type, remote, body| {
-            let mirror_path = git_nq_mirror_path.clone();
-
-            async move {
-                handle_git_empty_query(mirror_path, path_tail, method, content_type, remote, body)
-                    .await
-            }
-        });
 
     let routes = index
         .or(static_dir)
@@ -175,11 +156,13 @@ pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<Tls
         .or(rustup_dir)
         .or(crates_dir_native_format)
         .or(crates_dir_condensed_format)
-        .or(git)
-        .or(git_no_query);
+        .or(git);
 
     match tls_paths {
-        Some(TlsConfig{ cert_path, key_path}) => {
+        Some(TlsConfig {
+            cert_path,
+            key_path,
+        }) => {
             println!("Running TLS on {}", socket_addr);
             warp::serve(routes)
                 .tls()
@@ -209,9 +192,15 @@ async fn get_rustup_platforms(path: PathBuf) -> io::Result<Vec<Platform>> {
             if let Some(name) = entry.file_name().to_str() {
                 let platform_triple = name.to_string();
                 if entry.path().join("rustup-init").exists() {
-                    output.push(Platform { is_exe: false, platform_triple });
+                    output.push(Platform {
+                        is_exe: false,
+                        platform_triple,
+                    });
                 } else if entry.path().join("rustup-init.exe").exists() {
-                    output.push(Platform { is_exe: true, platform_triple });
+                    output.push(Platform {
+                        is_exe: true,
+                        platform_triple,
+                    });
                 }
             }
         }
@@ -268,40 +257,14 @@ async fn get_crate_file(
 }
 
 /// Handle a request from a git client.
-/// Special case for empty query strings.
-async fn handle_git_empty_query<S, B>(
-    mirror_path: PathBuf,
-    path_tail: Tail,
-    method: http::Method,
-    content_type: Option<String>,
-    remote: Option<SocketAddr>,
-    body: S,
-) -> Result<Response<Body>, Rejection>
-where
-    S: Stream<Item = Result<B, warp::Error>> + Send + Unpin + 'static,
-    B: bytes::Buf + Sized,
-{
-    handle_git(
-        mirror_path,
-        path_tail,
-        method,
-        content_type,
-        String::new(),
-        remote,
-        body,
-    )
-    .await
-}
-
-/// Handle a request from a git client.
 async fn handle_git<S, B>(
     mirror_path: PathBuf,
     path_tail: Tail,
     method: http::Method,
     content_type: Option<String>,
-    query: String,
     remote: Option<SocketAddr>,
     mut body: S,
+    query: String,
 ) -> Result<Response<Body>, Rejection>
 where
     S: Stream<Item = Result<B, warp::Error>> + Send + Unpin + 'static,
