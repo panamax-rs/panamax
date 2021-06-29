@@ -21,6 +21,8 @@ use warp::{
     Filter, Rejection, Stream,
 };
 
+use crate::crates::get_crate_path;
+
 pub struct TlsConfig {
     pub cert_path: PathBuf,
     pub key_path: PathBuf,
@@ -218,25 +220,8 @@ async fn get_crate_file(
     name: &str,
     version: &str,
 ) -> Result<Response<Body>, Rejection> {
-    let crate_path = match name.len() {
-        1 => PathBuf::from("1"),
-        2 => PathBuf::from("2"),
-        3 => PathBuf::from("3"),
-        n if n >= 4 => {
-            let first_two = name.get(0..2).ok_or_else(warp::reject::not_found)?;
-            let second_two = name.get(2..4).ok_or_else(warp::reject::not_found)?;
 
-            [first_two, second_two].iter().collect()
-        }
-        _ => return Err(warp::reject::not_found()),
-    };
-
-    let full_path = mirror_path
-        .join("crates")
-        .join(crate_path)
-        .join(name)
-        .join(version)
-        .join(format!("{}-{}.crate", name, version));
+    let full_path = get_crate_path(&mirror_path, name, version).ok_or_else(|| warp::reject::not_found())?;
 
     let file = File::open(full_path)
         .await
