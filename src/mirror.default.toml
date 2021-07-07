@@ -1,15 +1,17 @@
 # This is a Panamax mirror. It is a self-contained directory made to be easily copied
 # to an offline network or machine via rsync, USB, or another method.
 
-# While Panamax handles grabbing files from the Internet, it does not handle hosting
-# on the offline. Since everything in the mirror is static, it should be
-# fairly easily hosted using nginx, and git for the crates.io-index mirror.
+# When offline, Panamax also includes a "serve" command that can be used to serve
+# rustup and cargo clients from the mirror. This will also give setup instructions
+# on the homepage.
 
 [mirror]
 # Global mirror settings.
 
+
 # Number of download retries before giving up.
 retries = 5
+
 
 # Contact information for the user agent.
 # As per crates.io crawling policy, lacking this information may cause your IP to be blocked.
@@ -17,20 +19,25 @@ retries = 5
 # If you're okay with this, this parameter can be removed.
 contact = "your@email.com"
 
+
 [rustup]
 # These are the configuration parameters for the rustup half of the mirror.
 # This will download the rustup-init files, as well as all components needed
 # to run Rust on a machine.
 
+
 # Perform rustup synchronization. Set this to false if you only want to mirror crates.io.
 sync = true
+
 
 # Number of download threads to use when downloading rustup components.
 # This should be set lower than crates, as rustup consists of large files.
 download_threads = 4
 
+
 # Where to download rustup files from.
 source = "https://static.rust-lang.org"
+
 
 # How many historical versions of Rust to keep.
 # Setting these to 1 will keep only the latest version.
@@ -40,6 +47,7 @@ source = "https://static.rust-lang.org"
 keep_latest_stables = 1
 keep_latest_betas = 1
 keep_latest_nightlies = 1
+
 
 # Pinned versions of Rust to download and keep alongside latest stable/beta/nightly
 # Version specifiers should be in the rustup toolchain format:
@@ -51,125 +59,64 @@ keep_latest_nightlies = 1
 # <host>          = <target-triple>
 #
 # e.g. valid versions could be "1.42", "1.42.0", and "nightly-2014-12-18"
-pinned_rust_versions = [
-]
+# Uncomment the following lines to pin extra rust versions:
 
-# Whether to download the rustc-dev component
-download_dev = false
+#pinned_rust_versions = [
+#    "1.42"
+#]
 
-# The platforms to include in the mirror
-# These lists can be empty to mirror nothing, but if the setting is not set, it will default to all platforms.
-# Note: These platforms should match the list on https://rust-lang.github.io/rustup/installation/other.html
 
-# UNIX platforms
-platforms_unix = [
-    "aarch64-fuschia",
-    "aarch64-linux-android",
-    "aarch64-pc-windows-msvc",
-    "aarch64-unknown-hermit",
-    "aarch64-unknown-linux-gnu",
-    "aarch64-unknown-none",
-    "aarch64-unknown-none-softfloat",
-    "aarch64-unknown-redox",
-    "arm-linux-androideabi",
-    "arm-unknown-linux-gnueabi",
-    "arm-unknown-linux-gnueabihf",
-    "arm-unknown-linux-musleabi",
-    "arm-unknown-linux-musleabihf",
-    "armebv7r-none-eabi",
-    "armebv7r-none-eabihf",
-    "armv5te-unknown-linux-gnueabi",
-    "armv5te-unknown-linux-musleabi",
-    "armv7-apple-ios",
-    "armv7-linux-androideabi",
-    "armv7-unknown-linux-gnueabi",
-    "armv7-unknown-linux-gnueabihf",
-    "armv7s-apple-ios",
-    "asmjs-unknown-emscripten",
-    "i386-apple-ios",
-    "i586-pc-windows-msvc",
-    "i586-unknown-linux-gnu",
-    "i586-unknown-linux-musl",
-    "i686-apple-darwin",
-    "i686-linux-android",
-    "i686-unknown-freebsd",
-    "i686-unknown-linux-gnu",
-    "i686-unknown-linux-musl",
-    "mips-unknown-linux-gnu",
-    "mips64-unknown-linux-gnuabi64",
-    "mips64-unknown-linux-muslabi64",
-    "mips64el-unknown-linux-gnuabi64",
-    "mips64el-unknown-linux-muslabi64",
-    "mipsel-unknown-linux-gnu",
-    "mipsisa32r6el-unknown-linux-gnu",
-    "mipsisa64r6-unknown-linux-gnuabi64",
-    "mipsisa64r6el-unknown-linux-gnuabi64",
-    "nvptx64-nvidia-cuda",
-    "powerpc-unknown-linux-gnu",
-    "powerpc64-unknown-linux-gnu",
-    "powerpc64le-unknown-linux-gnu",
-    "riscv32gc-unknown-linux-gnu",
-    "riscv32i-unknown-none-elf",
-    "riscv32imac-unknown-none-elf",
-    "riscv32imc-unknown-none-elf",
-    "riscv64gc-unknown-none-elf",
-    "riscv64imac-unknown-none-elf",
-    "s390x-unknown-linux-gnu",
-    "sparc64-unknown-linux-gnu",
-    "sparcv9-sun-solaris",
-    "thumbv6m-none-eabi",
-    "thumbv7em-none-eabi",
-    "thumbv7neon-linux-androideabi",
-    "thumbv7neon-unknown-linux-gnueabihf",
-    "wasm32-unknown-emscripten",
-    "wasm32-unknown-unknown",
-    "wasm32-wasi",
-    "x86_64-apple-darwin",
-    "x86_64-apple-ios",
-    "x86_64-fortanix-unknown-sgx",
-    "x86_64-fuschia",
-    "x86_64-linux-android",
-    "x86_64-pc-solaris",
-    "x86_64-rumprun-netbsd",
-    "x86_64-sun-solaris",
-    "x86_64-unknown-freebsd",
-    "x86_64-unknown-linux-gnu",
-    "x86_64-unknown-linux-gnux32",
-    "x86_64-unknown-linux-musl",
-    "x86_64-unknown-netbsd",
-    "x86_64-unknown-redox",
-]
+# UNIX platforms to include in the mirror
+# Uncomment the following lines to limit which platforms get downloaded.
+# This affects both rustup-inits and components.
 
-# Windows platforms
-platforms_windows = [
-    "i586-pc-windows-msvc",
-    "i686-pc-windows-gnu",
-    "i686-pc-windows-msvc",
-    "x86_64-pc-windows-gnu",
-    "x86_64-pc-windows-msvc",
-]
+# platforms_unix = [
+#     "arm-unknown-linux-gnueabi",
+#     "x86_64-unknown-linux-gnu",
+#     "x86_64-unknown-linux-musl",
+# ]
+
+
+# Windows platforms to include in the mirror
+# Uncomment the following lines to limit which platforms get downloaded.
+# This affects both rustup-inits and components.
+
+# platforms_windows = [
+#     "x86_64-pc-windows-gnu",
+#     "x86_64-pc-windows-msvc",
+# ]
+
+
+# Whether to download the rustc-dev component.
+# This component isn't always needed, so setting this to false can save lots of space.
+download_dev = true
+
 
 [crates]
 # These are the configuration parameters for the crates.io half of the mirror.
 # This will download the crates.io-index, as well as the crates themselves.
 # Once downloaded, it will then (optionally) rewrite the config.json to point to your mirror.
 
+
 # Perform crates synchronization. Set this to false if you only want to mirror rustup.
 sync = true
+
 
 # Number of download threads to use when downloading crates components.
 # This should be set higher than rustup, as crates consist of many small files.
 download_threads = 16
 
+
 # Where to download the crates from.
 source = "https://crates.io/api/v1/crates"
 
+
 # Where to clone the crates.io-index repository from.
 source_index = "https://github.com/rust-lang/crates.io-index"
+
 
 # URL where this mirror's crates directory can be accessed from.
 # Used for rewriting crates.io-index's config.json.
 # Remove this parameter to perform no rewriting.
 # If removed, the `panamax rewrite` command can be used later.
 base_url = "http://panamax.internal/crates"
-

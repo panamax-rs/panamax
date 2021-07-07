@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::{fs, io};
@@ -9,6 +10,8 @@ use thiserror::Error;
 
 use crate::crates::is_new_crates_format;
 use crate::crates_index::rewrite_config_json;
+use crate::download::download_string;
+use crate::rustup::Channel;
 use crate::serve::TlsConfig;
 
 #[derive(Error, Debug)]
@@ -21,6 +24,8 @@ pub enum MirrorError {
     Config(String),
     #[error("Command line error: {0}")]
     CmdLine(String),
+    #[error("Download error: {0}")]
+    DownloadError(#[from] crate::download::DownloadError),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -286,6 +291,35 @@ pub fn serve(
             ))
         }
     };
+
+    Ok(())
+}
+
+/// Print out a list of all platforms.
+pub(crate) fn list_platforms(source: String, channel: String) -> Result<(), MirrorError> {
+    let channel_url = format!("{}/dist/channel-rust-{}.toml", source, channel);
+    let user_agent = HeaderValue::from_str(&format!("Panamax/{}", env!("CARGO_PKG_VERSION"))).expect("");
+    let channel_str = download_string(&channel_url, &user_agent)?;
+    let channel_data: Channel = toml::from_str(&channel_str)?;
+
+    let mut targets = HashSet::new();
+
+    for (_, pkg) in channel_data.pkg {
+        for (target, _) in pkg.target {
+            if target == "*" {
+                continue;
+            }
+            targets.insert(target);
+        }
+     }
+
+    let mut targets: Vec<String> = targets.into_iter().collect();
+    targets.sort();
+
+    println!("All currently available platforms for the {} channel:", channel);
+    for t in targets {
+        println!("  {}", t);
+    }
 
     Ok(())
 }
