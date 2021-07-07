@@ -1,0 +1,23 @@
+p:not(#pitch) {
+    margin-bottom: auto !important;
+}
+
+.instructions {
+    padding-bottom: 2em;
+}
+
+.instructions>div {
+    width: 50rem !important;
+}
+
+.instructions>div>pre {
+    text-align: left !important;
+    height: auto !important;
+    overflow-x: auto !important;
+}
+
+.instructions>select {
+    width: auto;
+    font-size: initial;
+    margin-top: 0.5rem;
+}

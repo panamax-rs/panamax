@@ -1,0 +1,47 @@
+<head>
+    <meta charset="utf-8">
+    <title>Panamax</title>
+    <link rel="stylesheet" href="static/css/normalize.css">
+    <link rel="stylesheet" href="static/css/rustup.css">
+    <link rel="stylesheet" href="static/css/panamax.css">
+    <script src="static/js/panamax.js"></script>
+</head>
+
+<body id="idx" onload="platform_change()">
+    <p id="pitch">
+        <em>Panamax</em> is a mirror for <br />
+        <a href="https://rustup.rs">rustup</a> and <a href="https://crates.io">crates.io</a>.
+    </p>
+
+    <div id="platform-instructions-unix" class="instructions">
+        <p>First, configure <code>rustup</code> for Panamax:</p>
+        <div class="copy-container">
+            <pre>echo "export RUSTUP_DIST_SERVER={{ host }}" >> ~/.bashrc
+echo "export RUSTUP_UPDATE_ROOT={{ host }}/rustup" >> ~/.bashrc
+
+source ~/.bashrc</pre>
+        </div>
+        <p>Then, configure <code>cargo</code> for Panamax:</p>
+        <div class="copy-container">
+            <pre>mkdir -p ~/.cargo
+
+cat &lt;&lt;EOT > ~/.cargo/config
+[source.panamax]
+registry = "{{ host }}/git/crates.io-index"
+[source.crates-io]
+replace-with = "panamax"
+EOT</pre>
+        </div>
+        <p>Finally, run <code>rustup-init</code>, and you're done!</p>
+        <select id="rustup-selected-platform" name="platform" onchange="platform_change()">
+            {% for platform in platforms %}<option value="{{ platform.is_exe }}">{{ platform.platform_triple }}</option>{% endfor %}
+        </select>
+
+        <div class="copy-container">
+            <pre id="rustup-text">wget <a href="{{ host }}/rustup/dist/(replace with selected platform)/rustup-init">{{ host }}/rustup/dist/(replace with selected platform)/rustup-init</a>
+chmod +x rustup-init
+./rustup-init</pre>
+        </div>
+    </div>
+    <div class="display-none" id="panamax-host">{{ host }}</div>
+</body>

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{net::IpAddr, path::PathBuf};
 use structopt::StructOpt;
 
 mod crates;
@@ -7,6 +7,7 @@ mod download;
 mod mirror;
 mod progress_bar;
 mod rustup;
+mod serve;
 
 /// Mirror rustup and crates.io repositories, for offline Rust and cargo usage.
 #[derive(Debug, StructOpt)]
@@ -41,6 +42,33 @@ enum Panamax {
         #[structopt(short, long)]
         base_url: Option<String>,
     },
+
+    /// Serve a mirror directory.
+    #[structopt(name = "serve")]
+    Serve {
+        /// Mirror directory.
+        #[structopt(parse(from_os_str))]
+        path: PathBuf,
+
+        /// IP address to listen on. Defaults to listening on everything.
+        #[structopt(short, long)]
+        listen: Option<IpAddr>,
+
+        /// Port to listen on.
+        /// Defaults to 8080, or 8443 if TLS certificate provided.
+        #[structopt(short, long)]
+        port: Option<u16>,
+
+        /// Path to a TLS certificate file. This enables TLS.
+        /// Also requires key_path.
+        #[structopt(long)]
+        cert_path: Option<PathBuf>,
+
+        /// Path to a TLS key file.
+        /// Also requires cert_path.
+        #[structopt(long)]
+        key_path: Option<PathBuf>,
+    },
 }
 
 fn main() {
@@ -50,6 +78,13 @@ fn main() {
         Panamax::Init { path } => mirror::init(&path),
         Panamax::Sync { path } => mirror::sync(&path),
         Panamax::Rewrite { path, base_url } => mirror::rewrite(&path, base_url),
+        Panamax::Serve {
+            path,
+            listen,
+            port,
+            cert_path,
+            key_path,
+        } => mirror::serve(path, listen, port, cert_path, key_path),
     }
     .unwrap_or_else(|e| eprintln!("Panamax command failed! {}", e));
 }
