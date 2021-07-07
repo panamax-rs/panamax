@@ -298,7 +298,8 @@ pub fn serve(
 /// Print out a list of all platforms.
 pub(crate) fn list_platforms(source: String, channel: String) -> Result<(), MirrorError> {
     let channel_url = format!("{}/dist/channel-rust-{}.toml", source, channel);
-    let user_agent = HeaderValue::from_str(&format!("Panamax/{}", env!("CARGO_PKG_VERSION"))).expect("");
+    let user_agent = HeaderValue::from_str(&format!("Panamax/{}", env!("CARGO_PKG_VERSION")))
+        .expect("Hardcoded user agent string should never fail.");
     let channel_str = download_string(&channel_url, &user_agent)?;
     let channel_data: Channel = toml::from_str(&channel_str)?;
 
@@ -311,12 +312,15 @@ pub(crate) fn list_platforms(source: String, channel: String) -> Result<(), Mirr
             }
             targets.insert(target);
         }
-     }
+    }
 
     let mut targets: Vec<String> = targets.into_iter().collect();
     targets.sort();
 
-    println!("All currently available platforms for the {} channel:", channel);
+    println!(
+        "All currently available platforms for the {} channel:",
+        channel
+    );
     for t in targets {
         println!("  {}", t);
     }

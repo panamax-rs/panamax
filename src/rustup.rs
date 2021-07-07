@@ -180,9 +180,7 @@ pub fn get_platforms(rustup: &ConfigRustup) -> Result<Platforms, MirrorError> {
             }
             p.clone()
         }
-        None => {
-            PLATFORMS_UNIX.iter().map(|x| x.to_string()).collect()
-        }
+        None => PLATFORMS_UNIX.iter().map(|x| x.to_string()).collect(),
     };
     let windows = match &rustup.platforms_windows {
         Some(p) => {
@@ -198,9 +196,7 @@ pub fn get_platforms(rustup: &ConfigRustup) -> Result<Platforms, MirrorError> {
             }
             p.clone()
         }
-        None => {
-            PLATFORMS_WINDOWS.iter().map(|x| x.to_string()).collect()
-        }
+        None => PLATFORMS_WINDOWS.iter().map(|x| x.to_string()).collect(),
     };
     Ok(Platforms { unix, windows })
 }
