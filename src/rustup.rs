@@ -123,33 +123,33 @@ pub enum SyncError {
 }
 
 #[derive(Deserialize, Debug)]
-struct TargetUrls {
-    url: String,
-    hash: String,
-    xz_url: String,
-    xz_hash: String,
+pub struct TargetUrls {
+    pub url: String,
+    pub hash: String,
+    pub xz_url: String,
+    pub xz_hash: String,
 }
 
 #[derive(Deserialize, Debug)]
-struct Target {
-    available: bool,
+pub struct Target {
+    pub available: bool,
 
     #[serde(flatten)]
-    target_urls: Option<TargetUrls>,
+    pub target_urls: Option<TargetUrls>,
 }
 
 #[derive(Deserialize, Debug)]
-struct Pkg {
-    version: String,
-    target: HashMap<String, Target>,
+pub struct Pkg {
+    pub version: String,
+    pub target: HashMap<String, Target>,
 }
 
 #[derive(Deserialize, Debug)]
-struct Channel {
+pub struct Channel {
     #[serde(alias = "manifest-version")]
-    manifest_version: String,
-    date: String,
-    pkg: HashMap<String, Pkg>,
+    pub manifest_version: String,
+    pub date: String,
+    pub pkg: HashMap<String, Pkg>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -181,7 +181,6 @@ pub fn get_platforms(rustup: &ConfigRustup) -> Result<Platforms, MirrorError> {
             p.clone()
         }
         None => {
-            eprintln!("Info: no 'platforms_unix' specified in 'rustup' section of 'mirror.toml', mirroring all platforms.");
             PLATFORMS_UNIX.iter().map(|x| x.to_string()).collect()
         }
     };
@@ -200,7 +199,6 @@ pub fn get_platforms(rustup: &ConfigRustup) -> Result<Platforms, MirrorError> {
             p.clone()
         }
         None => {
-            eprintln!("Info: no 'platforms_windows' specified in 'rustup' section of 'mirror.toml', mirroring all platforms.");
             PLATFORMS_WINDOWS.iter().map(|x| x.to_string()).collect()
         }
     };

@@ -28,7 +28,7 @@ pub enum DownloadError {
 thread_local!(static CLIENT: Client = Client::new());
 
 /// Download a URL and return it as a string.
-fn download_string(from: &str, user_agent: &HeaderValue) -> Result<String, DownloadError> {
+pub fn download_string(from: &str, user_agent: &HeaderValue) -> Result<String, DownloadError> {
     Ok(CLIENT.with(|client| {
         client
             .get(from)

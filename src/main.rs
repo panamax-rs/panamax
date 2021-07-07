@@ -69,6 +69,18 @@ enum Panamax {
         #[structopt(long)]
         key_path: Option<PathBuf>,
     },
+
+    /// List platforms currently available.
+    ///
+    /// This is useful for finding what can be used for
+    /// limiting platforms in mirror.toml.
+    #[structopt(name = "list-platforms")]
+    ListPlatforms {
+        #[structopt(long, default_value = "https://static.rust-lang.org")]
+        source: String,
+        #[structopt(long, default_value = "nightly")]
+        channel: String,
+    },
 }
 
 fn main() {
@@ -85,6 +97,7 @@ fn main() {
             cert_path,
             key_path,
         } => mirror::serve(path, listen, port, cert_path, key_path),
+        Panamax::ListPlatforms { source, channel } => mirror::list_platforms(source, channel),
     }
     .unwrap_or_else(|e| eprintln!("Panamax command failed! {}", e));
 }
