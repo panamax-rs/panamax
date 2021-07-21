@@ -375,7 +375,7 @@ pub fn rustup_download_list(
         channel
             .pkg
             .into_iter()
-            .filter(|(pkg_name, _)| download_dev || pkg_name == "rustc-dev")
+            .filter(|(pkg_name, _)| download_dev || pkg_name != "rustc-dev")
             .flat_map(|(_, pkg)| {
                 pkg.target
                     .into_iter()
