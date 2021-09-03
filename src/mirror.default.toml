@@ -108,6 +108,8 @@ download_threads = 16
 
 
 # Where to download the crates from.
+# The default, "https://crates.io/api/v1/crates", will actually instead use the corresponding
+# url at https://static.crates.io in order to avoid a redirect and rate limiting
 source = "https://crates.io/api/v1/crates"
 
 
