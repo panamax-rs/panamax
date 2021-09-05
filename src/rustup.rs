@@ -7,12 +7,12 @@ use crate::progress_bar::{
     current_step_prefix, padded_prefix_message, progress_bar, ProgressBarMessage,
 };
 use console::style;
+use futures::StreamExt;
+use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::header::HeaderValue;
-use scoped_threadpool::Pool;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::{Path, PathBuf};
 use std::{fs, io};
 use thiserror::Error;
 
@@ -202,7 +202,7 @@ pub fn get_platforms(rustup: &ConfigRustup) -> Result<Platforms, MirrorError> {
 }
 
 /// Synchronize one rustup-init file.
-pub fn sync_one_init(
+pub async fn sync_one_init(
     path: &Path,
     source: &str,
     platform: &str,
@@ -234,28 +234,24 @@ pub fn sync_one_init(
         format!("{}/rustup/dist/{}/rustup-init", source, platform)
     };
 
-    download_with_sha256_file(&source_url, &local_path, retries, false, user_agent)?;
-
+    download_with_sha256_file(&source_url, &local_path, retries, false, user_agent).await?;
     copy_file_create_dir_with_sha256(&local_path, &archive_path)?;
 
     Ok(())
 }
 
 /// Synchronize all rustup-init files.
-pub fn sync_rustup_init(
+pub async fn sync_rustup_init(
     path: &Path,
     source: &str,
     prefix: String,
-    threads: usize,
     retries: usize,
     user_agent: &HeaderValue,
     platforms: &Platforms,
 ) -> Result<(), SyncError> {
     let count = platforms.unix.len() + platforms.windows.len();
 
-    let (pb_thread, sender) = progress_bar(Some(count), prefix);
-
-    let errors_occurred = AtomicUsize::new(0);
+    let mut errors_occurred = 0usize;
 
     // Download rustup release file
     let release_url = format!("{}/rustup/release-stable.toml", source);
@@ -269,95 +265,74 @@ pub fn sync_rustup_init(
         retries,
         false,
         user_agent,
-    )?;
+    )
+    .await?;
 
     let rustup_version = get_rustup_version(&release_part_path)?;
 
     move_if_exists(&release_part_path, &release_path)?;
 
-    Pool::new(threads as u32).scoped(|scoped| {
-        let error_occurred = &errors_occurred;
-        for platform in &platforms.unix {
-            let s = sender.clone();
+    let pb = ProgressBar::new(count as u64)
+        .with_style(
+            ProgressStyle::default_bar()
+                .template(
+                    "{prefix} {wide_bar} {pos}/{len} [{elapsed_precise} / {duration_precise}]",
+                )
+                .progress_chars("█▉▊▋▌▍▎▏  "),
+        )
+        .with_prefix(prefix);
+    pb.enable_steady_tick(10);
+
+    let tasks = futures::stream::iter(platforms.unix.iter().chain(platforms.windows.iter()))
+        .map(|platform| {
+            // Clone the variables that will be moved into the tokio task.
             let rustup_version = rustup_version.clone();
-            scoped.execute(move || {
-                if let Err(e) = sync_one_init(
-                    path,
-                    source,
+            let path = path.to_path_buf();
+            let source = source.to_string();
+            let user_agent = user_agent.clone();
+            let platform = platform.clone();
+            let pb = pb.clone();
+
+            tokio::spawn(async move {
+                pb.inc(1);
+
+                sync_one_init(
+                    &path,
+                    &source,
                     platform.as_str(),
                     false,
                     &rustup_version,
                     retries,
-                    user_agent,
-                ) {
-                    match e {
-                        DownloadError::NotFound {
-                            status: _,
-                            url: _,
-                            data: _,
-                        } => {}
-                        _ => {
-                            s.send(ProgressBarMessage::Println(format!(
-                                "Downloading {} failed: {:?}",
-                                path.display(),
-                                e
-                            )))
-                            .expect("Channel send should not fail");
-                            error_occurred.fetch_add(1, Ordering::Release);
-                        }
-                    }
-                }
-                s.send(ProgressBarMessage::Increment)
-                    .expect("Channel send should not fail");
+                    &user_agent,
+                )
+                .await
             })
-        }
+        })
+        .buffer_unordered(32)
+        .collect::<Vec<_>>()
+        .await;
 
-        for platform in &platforms.windows {
-            let s = sender.clone();
-            let rustup_version = rustup_version.clone();
-            scoped.execute(move || {
-                if let Err(e) = sync_one_init(
-                    path,
-                    source,
-                    platform,
-                    true,
-                    &rustup_version,
-                    retries,
-                    user_agent,
-                ) {
-                    match e {
-                        DownloadError::NotFound {
-                            status: _,
-                            url: _,
-                            data: _,
-                        } => {}
-                        _ => {
-                            s.send(ProgressBarMessage::Println(format!(
-                                "Downloading {} failed: {:?}",
-                                path.display(),
-                                e
-                            )))
-                            .expect("Channel send should not fail");
-                            error_occurred.fetch_add(1, Ordering::Release);
-                        }
-                    }
+    for res in tasks {
+        // Unwrap the join result.
+        let res = res.unwrap();
+
+        if let Err(e) = res {
+            match e {
+                DownloadError::NotFound { .. } => {}
+                _ => {
+                    errors_occurred += 1;
+                    eprintln!("Download failed: {:?}", e);
                 }
-                s.send(ProgressBarMessage::Increment)
-                    .expect("Channel send should not fail");
-            })
+            }
         }
-    });
+    }
 
-    sender
-        .send(ProgressBarMessage::Done)
-        .expect("Channel send should not fail");
-    pb_thread.join().expect("Thread join should not fail");
-
-    let errors = errors_occurred.load(Ordering::Acquire);
-    if errors == 0 {
+    if errors_occurred == 0 {
         Ok(())
     } else {
-        Err(SyncError::FailedDownloads { count: errors })
+        Err(SyncError::FailedDownloads {
+            count: errors_occurred,
+        })
     }
 }
 
@@ -400,7 +375,7 @@ pub fn rustup_download_list(
     ))
 }
 
-pub fn sync_one_rustup_target(
+pub async fn sync_one_rustup_target(
     path: &Path,
     source: &str,
     url: &str,
@@ -411,7 +386,9 @@ pub fn sync_one_rustup_target(
     // Chop off the source portion of the URL, to mimic the rest of the path
     //let target_url = path.join(url[source.len()..].trim_start_matches("/"));
     let target_url = format!("{}/{}", source, url);
-    let target_path = path.join(url);
+    let target_path: PathBuf = std::iter::once(path.to_owned())
+        .chain(url.split('/').map(|e| PathBuf::from(e)))
+        .collect();
 
     download(
         &target_url,
@@ -420,8 +397,8 @@ pub fn sync_one_rustup_target(
         retries,
         false,
         user_agent,
-    )?;
-    Ok(())
+    )
+    .await
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -584,10 +561,9 @@ pub fn get_rustup_version(path: &Path) -> Result<String, SyncError> {
 
 /// Synchronize a rustup channel (stable, beta, or nightly).
 #[allow(clippy::too_many_arguments)]
-pub fn sync_rustup_channel(
+pub async fn sync_rustup_channel(
     path: &Path,
     source: &str,
-    threads: usize,
     prefix: String,
     channel: &str,
     retries: usize,
@@ -599,58 +575,73 @@ pub fn sync_rustup_channel(
     let channel_url = format!("{}/dist/channel-rust-{}.toml", source, channel);
     let channel_path = path.join(format!("dist/channel-rust-{}.toml", channel));
     let channel_part_path = append_to_path(&channel_path, ".part");
-    download_with_sha256_file(&channel_url, &channel_part_path, retries, true, user_agent)?;
+    download_with_sha256_file(&channel_url, &channel_part_path, retries, true, user_agent).await?;
 
     // Open toml file, find all files to download
     let (date, files) = rustup_download_list(&channel_part_path, download_dev, &platforms)?;
+    move_if_exists_with_sha256(&channel_part_path, &channel_path)?;
 
-    // Create progress bar
-    let (pb_thread, sender) = progress_bar(Some(files.len()), prefix);
+    let pb = ProgressBar::new((files.len()) as u64)
+        .with_style(
+            ProgressStyle::default_bar()
+                .template(
+                    "{prefix} {wide_bar} {pos}/{len} [{elapsed_precise} / {duration_precise}]",
+                )
+                .progress_chars("█▉▊▋▌▍▎▏  "),
+        )
+        .with_prefix(prefix);
+    pb.enable_steady_tick(10);
 
-    let errors_occurred = AtomicUsize::new(0);
+    let mut errors_occurred = 0usize;
 
-    // Download files
-    Pool::new(threads as u32).scoped(|scoped| {
-        let error_occurred = &errors_occurred;
-        for (url, hash) in &files {
-            let s = sender.clone();
-            scoped.execute(move || {
-                if let Err(e) =
-                    sync_one_rustup_target(&path, &source, &url, &hash, retries, user_agent)
-                {
-                    s.send(ProgressBarMessage::Println(format!(
-                        "Downloading {} failed: {:?}",
-                        path.display(),
-                        e
-                    )))
-                    .expect("Channel send should not fail");
-                    error_occurred.fetch_add(1, Ordering::Release);
-                }
-                s.send(ProgressBarMessage::Increment)
-                    .expect("Channel send should not fail");
+    let tasks = futures::stream::iter(files.iter())
+        .map(|(url, hash)| {
+            // Clone the variables that will be moved into the tokio task.
+            let path = path.to_path_buf();
+            let source = source.to_string();
+            let user_agent = user_agent.clone();
+            let url = url.clone();
+            let hash = hash.clone();
+            let pb = pb.clone();
+
+            tokio::spawn(async move {
+                pb.inc(1);
+
+                sync_one_rustup_target(&path, &source, &url, &hash, retries, &user_agent).await
             })
+        })
+        .buffer_unordered(64)
+        .collect::<Vec<_>>()
+        .await;
+
+    for res in tasks {
+        // Unwrap the join result.
+        let res = res.unwrap();
+
+        if let Err(e) = res {
+            match e {
+                DownloadError::NotFound { .. } => {}
+                _ => {
+                    errors_occurred += 1;
+                    eprintln!("Download failed: {:?}", e);
+                }
+            }
         }
-    });
+    }
 
-    // Wait for progress bar to finish
-    sender
-        .send(ProgressBarMessage::Done)
-        .expect("Channel send should not fail");
-    pb_thread.join().expect("Thread join should not fail");
-
-    let errors = errors_occurred.load(Ordering::Acquire);
-    if errors == 0 {
+    if errors_occurred == 0 {
         // Write channel history file
         add_to_channel_history(path, channel, &date, &files)?;
-        move_if_exists_with_sha256(&channel_part_path, &channel_path)?;
         Ok(())
     } else {
-        Err(SyncError::FailedDownloads { count: errors })
+        Err(SyncError::FailedDownloads {
+            count: errors_occurred,
+        })
     }
 }
 
 /// Synchronize rustup.
-pub fn sync(
+pub async fn sync(
     path: &Path,
     mirror: &ConfigMirror,
     rustup: &ConfigRustup,
@@ -676,11 +667,12 @@ pub fn sync(
         path,
         &rustup.source,
         prefix,
-        rustup.download_threads,
         mirror.retries,
         user_agent,
         &platforms,
-    ) {
+    )
+    .await
+    {
         eprintln!("Downloading rustup init files failed: {:?}", e);
         eprintln!("You will need to sync again to finish this download.");
     }
@@ -694,14 +686,15 @@ pub fn sync(
         if let Err(e) = sync_rustup_channel(
             path,
             &rustup.source,
-            rustup.download_threads,
             prefix,
             "stable",
             mirror.retries,
             user_agent,
             download_dev,
             &platforms,
-        ) {
+        )
+        .await
+        {
             failures = true;
             eprintln!("Downloading stable release failed: {:?}", e);
             eprintln!("You will need to sync again to finish this download.");
@@ -720,14 +713,15 @@ pub fn sync(
         if let Err(e) = sync_rustup_channel(
             path,
             &rustup.source,
-            rustup.download_threads,
             prefix,
             "beta",
             mirror.retries,
             user_agent,
             download_dev,
             &platforms,
-        ) {
+        )
+        .await
+        {
             failures = true;
             eprintln!("Downloading beta release failed: {:?}", e);
             eprintln!("You will need to sync again to finish this download.");
@@ -746,14 +740,15 @@ pub fn sync(
         if let Err(e) = sync_rustup_channel(
             path,
             &rustup.source,
-            rustup.download_threads,
             prefix,
             "nightly",
             mirror.retries,
             user_agent,
             download_dev,
             &platforms,
-        ) {
+        )
+        .await
+        {
             failures = true;
             eprintln!("Downloading nightly release failed: {:?}", e);
             eprintln!("You will need to sync again to finish this download.");
@@ -774,14 +769,15 @@ pub fn sync(
             if let Err(e) = sync_rustup_channel(
                 path,
                 &rustup.source,
-                rustup.download_threads,
                 prefix,
                 &version,
                 mirror.retries,
                 user_agent,
                 download_dev,
                 &platforms,
-            ) {
+            )
+            .await
+            {
                 failures = true;
                 if let SyncError::Download(DownloadError::NotFound { .. }) = e {
                     eprintln!(

@@ -1,9 +1,10 @@
 use crate::download::{download, DownloadError};
 use crate::mirror::{ConfigCrates, ConfigMirror};
-use crate::progress_bar::{padded_prefix_message, progress_bar, ProgressBarMessage};
+use crate::progress_bar::padded_prefix_message;
+use futures::StreamExt;
 use git2::Repository;
+use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::header::HeaderValue;
-use scoped_threadpool::Pool;
 use serde::{Deserialize, Serialize};
 use std::fs::read_dir;
 use std::path::{Path, PathBuf};
@@ -26,7 +27,7 @@ pub enum SyncError {
 }
 /// One entry found in a crates.io-index file.
 /// These files are formatted as lines of JSON.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CrateEntry {
     name: String,
     vers: String,
@@ -35,7 +36,7 @@ pub struct CrateEntry {
 }
 
 /// Download one single crate file.
-pub fn sync_one_crate_entry(
+pub async fn sync_one_crate_entry(
     path: &Path,
     source: Option<&str>,
     retries: usize,
@@ -68,11 +69,12 @@ pub fn sync_one_crate_entry(
         false,
         user_agent,
     )
+    .await
 }
 
 /// Synchronize the crate files themselves, using the index for a list of files.
 // TODO: There are still many unwraps in the foreach sections. This needs to be fixed.
-pub fn sync_crates_files(
+pub async fn sync_crates_files(
     path: &Path,
     mirror: &ConfigMirror,
     crates: &ConfigCrates,
@@ -89,7 +91,7 @@ pub fn sync_crates_files(
     let repo = Repository::open(&repo_path)?;
 
     // Set the crates.io URL, or None if default
-    let crates_source = if crates.source == "https://crates.io/api/v1/crates" {
+    let crates_source: Option<&str> = if crates.source == "https://crates.io/api/v1/crates" {
         None
     } else {
         Some(crates.source.as_ref())
@@ -112,14 +114,24 @@ pub fn sync_crates_files(
         repo.diff_tree_to_tree(Some(&master_tree), Some(&origin_master_tree), None)?
     };
 
-    // Run one pass to figure out a total count
-    let mut count = 0;
+    let mut changed_crates = Vec::new();
+    let mut removed_crates = Vec::new();
+
+    let pb = ProgressBar::new_spinner()
+        .with_style(
+            ProgressStyle::default_bar()
+                .template("{prefix} {wide_bar} {spinner} [{elapsed_precise}]")
+                .progress_chars("  "),
+        )
+        .with_prefix(prefix.clone());
+    pb.enable_steady_tick(10);
+
+    // Figure out which crates we need to update/remove.
     diff.foreach(
         &mut |delta, _| {
             let df = delta.new_file();
             let p = df.path().unwrap();
             if p == Path::new("config.json") {
-                // Skip config.json, as it's the only file that's not a crate descriptor
                 return true;
             }
 
@@ -137,115 +149,96 @@ pub fn sync_crates_files(
                 }
             }
 
+            // Get the data for this crate file
             let oid = df.id();
             if oid.is_zero() {
-                // The crate was removed, continue to next crate
+                // The crate was removed, continue to next crate.
+                // Note that this does not include yanked crates.
+                removed_crates.push(p.to_path_buf());
                 return true;
             }
             let blob = repo.find_blob(oid).unwrap();
             let data = blob.content();
-            count += Cursor::new(data).lines().count();
+
+            // Download one crate for each of the versions in the crate file
+            for line in Cursor::new(data).lines() {
+                let line = line.unwrap();
+                let c: CrateEntry = serde_json::from_str(&line).unwrap();
+
+                changed_crates.push(c);
+            }
+
             true
         },
         None,
         None,
         None,
-    )?;
+    )
+    .unwrap();
 
-    let (pb_thread, sender) = progress_bar(Some(count), prefix);
-
-    let mut removed_crates = vec![];
-
-    // Download crates multithreaded
-    Pool::new(crates.download_threads as u32).scoped(|scoped| {
-        diff.foreach(
-            &mut |delta, _| {
-                let df = delta.new_file();
-                let p = df.path().unwrap();
-                if p == Path::new("config.json") {
-                    return true;
-                }
-
-                // DEV: if dev_reduced_crates is enabled, only download crates that start with z
-                #[cfg(feature = "dev_reduced_crates")]
-                {
-                    // Get file name, try-convert to string, check if starts_with z, unwrap, or false if None
-                    if !p
-                        .file_name()
-                        .and_then(|x| x.to_str())
-                        .map(|x| x.starts_with('z'))
-                        .unwrap_or(false)
-                    {
-                        return true;
-                    }
-                }
-
-                // Get the data for this crate file
-                let oid = df.id();
-                if oid.is_zero() {
-                    // The crate was removed, continue to next crate.
-                    // Note that this does not include yanked crates.
-                    removed_crates.push(p.to_path_buf());
-                    return true;
-                }
-                let blob = repo.find_blob(oid).unwrap();
-                let data = blob.content();
-
-                // Download one crate for each of the versions in the crate file
-                for line in Cursor::new(data).lines() {
-                    let line = line.unwrap();
-                    let c: CrateEntry = serde_json::from_str(&line).unwrap();
-                    let s = sender.clone();
-                    scoped.execute(move || {
-                        match sync_one_crate_entry(
-                            path,
-                            crates_source,
-                            mirror.retries,
-                            &c,
-                            user_agent,
-                        ) {
-                            Ok(())
-                            | Err(DownloadError::NotFound {
-                                status: _,
-                                url: _,
-                                data: _,
-                            })
-                            | Err(DownloadError::MismatchedHash {
-                                expected: _,
-                                actual: _,
-                            }) => {}
-                            Err(e) => {
-                                s.send(ProgressBarMessage::Println(format!(
-                                    "Downloading {} {} failed: {:?}",
-                                    &c.name, &c.vers, e
-                                )))
-                                .expect("Channel send should not fail");
-                            }
-                        }
-                        s.send(ProgressBarMessage::Increment)
-                            .expect("progress bar increment error");
-                    });
-                }
-
-                true
-            },
-            None,
-            None,
-            None,
+    pb.finish_and_clear();
+    let pb = ProgressBar::new(changed_crates.len() as u64)
+        .with_style(
+            ProgressStyle::default_bar()
+                .template("{prefix} {wide_bar} {pos}/{len} [{elapsed_precise} / {duration_precise}]")
+                .progress_chars("█▉▊▋▌▍▎▏  "),
         )
-        .unwrap();
-    });
+        .with_prefix(prefix);
+    pb.enable_steady_tick(10);
+    pb.set_draw_rate(10);
+
+    let tasks = futures::stream::iter(changed_crates.into_iter())
+        .map(|c| {
+            // Duplicate variables used in the async closure.
+            let path = path.to_owned();
+            let mirror_retries = mirror.retries;
+            let crates_source = crates_source.map(|s| s.to_string());
+            let user_agent = user_agent.to_owned();
+            let pb = pb.clone();
+            let c = c.to_owned();
+
+            tokio::spawn(async move {
+                pb.inc(1);
+
+                sync_one_crate_entry(
+                    &path,
+                    crates_source.as_deref(),
+                    mirror_retries,
+                    &c,
+                    &user_agent,
+                )
+                .await
+            })
+        })
+        .buffer_unordered(64)
+        .collect::<Vec<_>>()
+        .await;
+
+    for t in tasks {
+        let res = t.unwrap();
+        match res {
+            Ok(())
+            | Err(DownloadError::NotFound {
+                status: _,
+                url: _,
+                data: _,
+            })
+            | Err(DownloadError::MismatchedHash {
+                expected: _,
+                actual: _,
+            }) => {}
+
+            Err(e) => {
+                eprintln!("Downloading failed: {:?}", e);
+            }
+        }
+    }
 
     // Delete any removed crates
     for rc in removed_crates {
         // Try to remove the file, but ignore it if it doesn't exist
         let _ = fs::remove_file(repo_path.join(rc));
     }
-
-    sender
-        .send(ProgressBarMessage::Done)
-        .expect("Channel send should not fail");
-    pb_thread.join().expect("Thread join should not fail");
 
     Ok(())
 }

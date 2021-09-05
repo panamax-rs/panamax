@@ -10,30 +10,30 @@ repository = "https://github.com/panamax-rs/panamax"
 edition = "2018"
 
 [dependencies]
-reqwest = { version = "0.11.3", features = ["blocking"] }
-indicatif = "0.16.0"
-structopt = "0.3.21"
+reqwest = { version = "0.11.4", features = ["blocking"] }
+indicatif = "0.17.0-beta.1"
+structopt = "0.3.23"
 toml = "0.5.8"
-serde = { version = "1.0.125", features = ["derive"] }
+serde = { version = "1.0.130", features = ["derive"] }
 console = "0.14.1"
-scoped_threadpool = "0.1.9"
 log = "0.4.14"
-env_logger = "0.8.3"
-sha2 = "0.9.4"
+env_logger = "0.9.0"
+sha2 = "0.9.6"
 url = "2.2.2"
 glob = "0.3.0"
-git2 = "0.13.18"
-serde_json = "1.0.64"
-thiserror = "1.0.24"
-tokio = { version = "1.7.1", features = ["full"] }
+git2 = "0.13.21"
+serde_json = "1.0.67"
+thiserror = "1.0.29"
+tokio = { version = "1.11.0", features = ["full"] }
 warp = { version = "0.3.1", features = ["tls"] }
 askama = "0.10.5"
 askama_warp = "0.11.0"
-include_dir = "0.6.0"
-bytes = "1.0.1"
-tokio-stream = "0.1.6"
-tokio-util = "0.6.7"
-futures-util = "0.3.15"
+include_dir = "0.6.2"
+bytes = "1.1.0"
+tokio-stream = "0.1.7"
+tokio-util = "0.6.8"
+futures-util = "0.3.17"
+futures = "0.3.17"
 
 [features]
 default = []

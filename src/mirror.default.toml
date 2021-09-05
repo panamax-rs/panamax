@@ -30,11 +30,6 @@ contact = "your@email.com"
 sync = true
 
 
-# Number of download threads to use when downloading rustup components.
-# This should be set lower than crates, as rustup consists of large files.
-download_threads = 4
-
-
 # Where to download rustup files from.
 source = "https://static.rust-lang.org"
 
@@ -100,11 +95,6 @@ download_dev = true
 
 # Perform crates synchronization. Set this to false if you only want to mirror rustup.
 sync = true
-
-
-# Number of download threads to use when downloading crates components.
-# This should be set higher than rustup, as crates consist of many small files.
-download_threads = 16
 
 
 # Where to download the crates from.
