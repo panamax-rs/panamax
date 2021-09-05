@@ -429,49 +429,44 @@ pub fn clean_old_files(
     pinned_rust_versions: Option<&Vec<String>>,
     prefix: String,
 ) -> Result<(), SyncError> {
+    let versions = [
+        ("stable", keep_stables),
+        ("beta", keep_betas),
+        ("nightly", keep_nightlies),
+    ];
+
     // Handle all of stable/beta/nightly
-    let mut files_to_keep: HashSet<String> = HashSet::new();
-    if let Some(s) = keep_stables {
-        let mut stable = get_channel_history(path, "stable")?;
-        let latest_dates = latest_dates_from_channel_history(&stable, s);
-        for date in latest_dates {
-            if let Some(t) = stable.versions.get_mut(&date) {
-                t.iter().for_each(|t| {
-                    files_to_keep.insert(t.to_string());
-                });
+    let mut files_to_keep: HashSet<PathBuf> = HashSet::new();
+    for (channel, keep_version) in versions {
+        if let Some(s) = keep_version {
+            let mut history = get_channel_history(path, channel)?;
+            let latest_dates = latest_dates_from_channel_history(&history, s);
+            for date in latest_dates {
+                if let Some(t) = history.versions.get_mut(&date) {
+                    t.iter().for_each(|t| {
+                        // Convert the path to a PathBuf.
+                        let path: PathBuf = t.split('/').collect();
+                        files_to_keep.insert(path);
+                    });
+                }
             }
         }
     }
-    if let Some(b) = keep_betas {
-        let mut beta = get_channel_history(path, "beta")?;
-        let latest_dates = latest_dates_from_channel_history(&beta, b);
-        for date in latest_dates {
-            if let Some(t) = beta.versions.get_mut(&date) {
-                t.iter().for_each(|t| {
-                    files_to_keep.insert(t.to_string());
-                });
-            }
-        }
-    }
-    if let Some(n) = keep_nightlies {
-        let mut nightly = get_channel_history(path, "nightly")?;
-        let latest_dates = latest_dates_from_channel_history(&nightly, n);
-        for date in latest_dates {
-            if let Some(t) = nightly.versions.get_mut(&date) {
-                t.iter().for_each(|t| {
-                    files_to_keep.insert(t.to_string());
-                });
-            }
-        }
-    }
+
     if let Some(pinned_versions) = pinned_rust_versions {
         for version in pinned_versions {
-            let mut pinned = get_channel_history(path, &version)?;
+            let mut pinned = match get_channel_history(path, &version) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
             let latest_dates = latest_dates_from_channel_history(&pinned, 1);
             for date in latest_dates {
                 if let Some(t) = pinned.versions.get_mut(&date) {
                     t.iter().for_each(|t| {
-                        files_to_keep.insert(t.to_string());
+                        // Convert the path to a PathBuf.
+                        let path: PathBuf = t.split('/').collect();
+
+                        files_to_keep.insert(path);
                     });
                 }
             }
@@ -479,7 +474,7 @@ pub fn clean_old_files(
     }
 
     let dist_path = path.join("dist");
-    let mut files_to_delete: Vec<String> = vec![];
+    let mut files_to_delete = Vec::new();
 
     for dir in fs::read_dir(dist_path)? {
         let dir = dir?.path();
@@ -487,50 +482,39 @@ pub fn clean_old_files(
             for full_path in fs::read_dir(dir)? {
                 let full_path = full_path?.path();
                 let file_path = full_path.strip_prefix(path)?;
-                if let Some(file_path) = file_path.to_str() {
-                    if !files_to_keep.contains(file_path) {
-                        files_to_delete.push(file_path.to_string());
-                    }
+
+                if !files_to_keep.contains(file_path) {
+                    files_to_delete.push(file_path.to_owned());
                 }
             }
         }
     }
 
     // Progress bar!
-    let (pb_thread, sender) = progress_bar(Some(files_to_delete.len()), prefix);
+    let pb = ProgressBar::new(files_to_delete.len() as u64)
+        .with_style(
+            ProgressStyle::default_bar()
+                .template(
+                    "{prefix} {wide_bar} {pos}/{len} [{elapsed_precise} / {duration_precise}]",
+                )
+                .progress_chars("█▉▊▋▌▍▎▏  "),
+        )
+        .with_prefix(prefix);
 
     for f in files_to_delete {
         if let Err(e) = fs::remove_file(path.join(&f)) {
-            sender
-                .send(ProgressBarMessage::Println(format!(
-                    "Could not remove file {}: {:?}",
-                    f, e
-                )))
-                .expect("Channel send should not fail");
+            eprintln!("Could not remove file {}: {:?}", f.to_string_lossy(), e);
         }
-        sender
-            .send(ProgressBarMessage::Increment)
-            .expect("Channel send should not fail");
+        pb.inc(1);
     }
-
-    sender
-        .send(ProgressBarMessage::Done)
-        .expect("Channel send should not fail");
-    pb_thread.join().expect("Thread join should not fail");
 
     Ok(())
 }
 
 pub fn get_channel_history(path: &Path, channel: &str) -> Result<ChannelHistoryFile, SyncError> {
     let channel_history_path = path.join(format!("mirror-{}-history.toml", channel));
-    if channel_history_path.exists() {
-        let ch_data = fs::read_to_string(channel_history_path)?;
-        Ok(toml::from_str(&ch_data)?)
-    } else {
-        Ok(ChannelHistoryFile {
-            versions: HashMap::new(),
-        })
-    }
+    let ch_data = fs::read_to_string(channel_history_path)?;
+    Ok(toml::from_str(&ch_data)?)
 }
 
 pub fn add_to_channel_history(
@@ -539,7 +523,14 @@ pub fn add_to_channel_history(
     date: &str,
     files: &[(String, String)],
 ) -> Result<(), SyncError> {
-    let mut channel_history = get_channel_history(path, channel)?;
+    let mut channel_history = match get_channel_history(path, channel) {
+        Ok(c) => c,
+        Err(SyncError::Io(_)) => ChannelHistoryFile {
+            versions: HashMap::new(),
+        },
+        Err(e) => Err(e)?,
+    };
+
     channel_history.versions.insert(
         date.to_string(),
         files.iter().map(|(f, _)| f.to_string()).collect(),
