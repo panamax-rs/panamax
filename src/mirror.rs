@@ -39,6 +39,8 @@ pub struct ConfigRustup {
     pub sync: bool,
     pub source: String,
     pub download_dev: Option<bool>,
+    pub download_gz: Option<bool>,
+    pub download_xz: Option<bool>,
     pub platforms_unix: Option<Vec<String>>,
     pub platforms_windows: Option<Vec<String>>,
     pub keep_latest_stables: Option<usize>,

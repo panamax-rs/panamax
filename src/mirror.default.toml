@@ -30,6 +30,13 @@ contact = "your@email.com"
 sync = true
 
 
+# Whether to mirror XZ archives. These archives are more efficiently compressed
+# than the GZ archives, and rustup uses them by default.
+download_xz = true
+# Whether to mirror GZ archives, for further backwards compatibility with rustup.
+download_gz = false
+
+
 # Where to download rustup files from.
 source = "https://static.rust-lang.org"
 

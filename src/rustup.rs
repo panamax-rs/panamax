@@ -338,6 +338,8 @@ pub async fn sync_rustup_init(
 pub fn rustup_download_list(
     path: &Path,
     download_dev: bool,
+    download_gz: bool,
+    download_xz: bool,
     platforms: &Platforms,
 ) -> Result<(String, Vec<(String, String)>), SyncError> {
     let channel_str = fs::read_to_string(path).map_err(DownloadError::Io)?;
@@ -360,7 +362,17 @@ pub fn rustup_download_list(
                     .flat_map(|(_, target)| -> Vec<(String, String)> {
                         target
                             .target_urls
-                            .map(|urls| vec![(urls.url, urls.hash), (urls.xz_url, urls.xz_hash)])
+                            .map(|urls| {
+                                let mut v = Vec::new();
+                                if download_gz {
+                                    v.push((urls.url, urls.hash));
+                                }
+                                if download_xz {
+                                    v.push((urls.xz_url, urls.xz_hash));
+                                }
+
+                                v
+                            })
                             .into_iter()
                             .flatten()
                             .map(|(url, hash)| {
@@ -558,6 +570,8 @@ pub async fn sync_rustup_channel(
     retries: usize,
     user_agent: &HeaderValue,
     download_dev: bool,
+    download_gz: bool,
+    download_xz: bool,
     platforms: &Platforms,
 ) -> Result<(), SyncError> {
     // Download channel file
@@ -567,7 +581,13 @@ pub async fn sync_rustup_channel(
     download_with_sha256_file(&channel_url, &channel_part_path, retries, true, user_agent).await?;
 
     // Open toml file, find all files to download
-    let (date, files) = rustup_download_list(&channel_part_path, download_dev, &platforms)?;
+    let (date, files) = rustup_download_list(
+        &channel_part_path,
+        download_dev,
+        download_gz,
+        download_xz,
+        &platforms,
+    )?;
     move_if_exists_with_sha256(&channel_part_path, &channel_path)?;
 
     let pb = ProgressBar::new((files.len()) as u64)
@@ -640,6 +660,9 @@ pub async fn sync(
     // Default to not downloading rustc-dev
     let download_dev = rustup.download_dev.unwrap_or(false);
 
+    let download_gz = rustup.download_gz.unwrap_or(false);
+    let download_xz = rustup.download_xz.unwrap_or(true);
+
     let num_pinned_versions = rustup.pinned_rust_versions.as_ref().map_or(0, |v| v.len());
     let num_steps = 1 + // sync rustup-init
                     1 + 1 + 1 + // sync latest stable, beta, nightly
@@ -680,6 +703,8 @@ pub async fn sync(
             mirror.retries,
             user_agent,
             download_dev,
+            download_gz,
+            download_xz,
             &platforms,
         )
         .await
@@ -707,6 +732,8 @@ pub async fn sync(
             mirror.retries,
             user_agent,
             download_dev,
+            download_gz,
+            download_xz,
             &platforms,
         )
         .await
@@ -734,6 +761,8 @@ pub async fn sync(
             mirror.retries,
             user_agent,
             download_dev,
+            download_gz,
+            download_xz,
             &platforms,
         )
         .await
@@ -763,6 +792,8 @@ pub async fn sync(
                 mirror.retries,
                 user_agent,
                 download_dev,
+                download_gz,
+                download_xz,
                 &platforms,
             )
             .await
