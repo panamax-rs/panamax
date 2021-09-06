@@ -306,7 +306,7 @@ pub async fn sync_rustup_init(
                 .await
             })
         })
-        .buffer_unordered(32)
+        .buffer_unordered(8)
         .collect::<Vec<_>>()
         .await;
 
@@ -599,7 +599,7 @@ pub async fn sync_rustup_channel(
                 sync_one_rustup_target(&path, &source, &url, &hash, retries, &user_agent).await
             })
         })
-        .buffer_unordered(64)
+        .buffer_unordered(8)
         .collect::<Vec<_>>()
         .await;
 
