@@ -38,24 +38,34 @@ pub fn sync_crates_repo(mirror_path: &Path, crates: &ConfigCrates) -> Result<(),
     let repo_path = mirror_path.join("crates.io-index");
 
     let prefix = padded_prefix_message(1, 3, "Fetching crates.io-index");
-    let pb = ProgressBar::new(1u64)
+    let pb = ProgressBar::new_spinner()
         .with_style(
             ProgressStyle::default_bar()
-                .template("{prefix} {wide_bar} {pos}/{len} [{elapsed_precise}]")
-                .progress_chars("█▉▊▋▌▍▎▏  "),
+                .template("{prefix} {wide_bar} {spinner} [{elapsed_precise}]")
+                .progress_chars("  "),
         )
         .with_prefix(prefix);
-    pb.set_draw_rate(10);
+    // Enable the steady tick, so the transfer progress callback isn't spending its time
+    // updating the progress bar.
+    pb.enable_steady_tick(10);
 
     // Libgit2 has callbacks that allow us to update the progress bar
     // as the git download progresses.
-    let mut remote_callbacks = RemoteCallbacks::new();
+    // FIXME: Enabling progress updates causes checkout times to balloon.
+    let remote_callbacks = RemoteCallbacks::new();
+    /*
     remote_callbacks.transfer_progress(|p| {
-        pb.set_length(p.total_objects() as u64);
-        pb.set_position(p.indexed_objects() as u64);
+        if p.received_objects() == p.total_objects() {
+            pb.set_length(p.total_deltas() as u64);
+            pb.set_position(p.indexed_deltas() as u64);
+        } else {
+            pb.set_length(p.total_objects() as u64);
+            pb.set_position(p.indexed_objects() as u64);
+        }
 
         true
     });
+    */
     let mut fetch_opts = FetchOptions::new();
     fetch_opts.remote_callbacks(remote_callbacks);
 
