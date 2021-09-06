@@ -6,6 +6,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 use thiserror::Error;
+use tokio::io::AsyncReadExt;
 
 #[derive(Error, Debug)]
 pub enum DownloadError {
@@ -189,18 +190,40 @@ pub async fn download(
     user_agent: &HeaderValue,
 ) -> Result<(), DownloadError> {
     if path.exists() && !force_download {
-        Ok(())
-    } else {
-        let mut res = Ok(());
-        for _ in 0..=retries {
-            res = match one_download(url, path, hash, user_agent).await {
-                Ok(_) => break,
-                Err(e) => Err(e),
-            }
-        }
+        if let Some(h) = hash {
+            // Verify SHA-256 hash on the filesystem.
+            let mut file = tokio::fs::File::open(path).await?;
+            let mut buf = [0u8; 4096];
+            let mut sha256 = Sha256::new();
 
-        res
+            loop {
+                let n = file.read(&mut buf).await?;
+                if n == 0 {
+                    break;
+                }
+
+                sha256.update(&buf[..n]);
+            }
+
+            let f_hash = format!("{:x}", sha256.finalize());
+            if h == f_hash {
+                // Calculated hash matches specified hash.
+                return Ok(());
+            }
+        } else {
+            return Ok(());
+        }
     }
+
+    let mut res = Ok(());
+    for _ in 0..=retries {
+        res = match one_download(url, path, hash, user_agent).await {
+            Ok(_) => break,
+            Err(e) => Err(e),
+        }
+    }
+
+    res
 }
 
 /// Download file and associated .sha256 file, verifying the hash, and retrying if needed
