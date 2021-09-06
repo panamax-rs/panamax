@@ -3,9 +3,7 @@ use crate::download::{
     move_if_exists, move_if_exists_with_sha256, write_file_create_dir, DownloadError,
 };
 use crate::mirror::{ConfigMirror, ConfigRustup, MirrorError};
-use crate::progress_bar::{
-    current_step_prefix, padded_prefix_message, progress_bar, ProgressBarMessage,
-};
+use crate::progress_bar::{current_step_prefix, padded_prefix_message};
 use console::style;
 use futures::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
