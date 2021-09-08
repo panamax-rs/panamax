@@ -538,6 +538,7 @@ pub fn add_to_channel_history(
     channel: &str,
     date: &str,
     files: &[(String, String)],
+    extra_files: &[String],
 ) -> Result<(), SyncError> {
     let mut channel_history = match get_channel_history(path, channel) {
         Ok(c) => c,
@@ -547,10 +548,12 @@ pub fn add_to_channel_history(
         Err(e) => return Err(e),
     };
 
-    channel_history.versions.insert(
-        date.to_string(),
-        files.iter().map(|(f, _)| f.to_string()).collect(),
-    );
+    let files = files.iter().map(|(f, _)| f.to_string());
+    let extra_files = extra_files.into_iter().map(|ef| ef.to_string());
+
+    let files = files.chain(extra_files).collect();
+
+    channel_history.versions.insert(date.to_string(), files);
 
     let ch_data = toml::to_string(&channel_history)?;
 
@@ -582,8 +585,22 @@ pub async fn sync_rustup_channel(
     platforms: &Platforms,
 ) -> Result<(), SyncError> {
     // Download channel file
-    let channel_url = format!("{}/dist/channel-rust-{}.toml", source, channel);
-    let channel_path = path.join(format!("dist/channel-rust-{}.toml", channel));
+    let (channel_url, channel_path, extra_files) = if channel.starts_with("nightly-") {
+        let inner_channel = &channel[8..];
+        let url = format!(
+            "{}/dist/{}/channel-rust-nightly.toml",
+            source, inner_channel
+        );
+        let path_chunk = format!("dist/{}/channel-rust-nightly.toml", inner_channel);
+        let path = path.join(&path_chunk);
+        // Make sure the cleanup step doesn't delete the channel toml
+        let extra_files = vec![path_chunk.clone(), format!("{}.sha256", path_chunk)];
+        (url, path, extra_files)
+    } else {
+        let url = format!("{}/dist/channel-rust-{}.toml", source, channel);
+        let path = path.join(format!("dist/channel-rust-{}.toml", channel));
+        (url, path, Vec::new())
+    };
     let channel_part_path = append_to_path(&channel_path, ".part");
     download_with_sha256_file(&channel_url, &channel_part_path, retries, true, user_agent).await?;
 
@@ -648,7 +665,7 @@ pub async fn sync_rustup_channel(
 
     if errors_occurred == 0 {
         // Write channel history file
-        add_to_channel_history(path, channel, &date, &files)?;
+        add_to_channel_history(path, channel, &date, &files, &extra_files)?;
         Ok(())
     } else {
         Err(SyncError::FailedDownloads {

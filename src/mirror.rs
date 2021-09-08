@@ -113,10 +113,7 @@ pub fn init(path: &Path) -> Result<(), MirrorError> {
 }
 
 pub fn default_user_agent() -> String {
-    format!(
-        "Panamax/{}",
-        env!("CARGO_PKG_VERSION")
-    )
+    format!("Panamax/{}", env!("CARGO_PKG_VERSION"))
 }
 
 pub async fn sync(path: &Path) -> Result<(), MirrorError> {
