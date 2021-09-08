@@ -38,7 +38,7 @@ download_gz = false
 
 
 # Number of downloads that can be ran in parallel.
-download_threads = 8
+download_threads = 16
 
 
 # Where to download rustup files from.
@@ -95,7 +95,7 @@ keep_latest_nightlies = 1
 
 # Whether to download the rustc-dev component.
 # This component isn't always needed, so setting this to false can save lots of space.
-download_dev = true
+download_dev = false
 
 
 [crates]
@@ -109,7 +109,7 @@ sync = true
 
 
 # Number of downloads that can be ran in parallel.
-download_threads = 8
+download_threads = 64
 
 
 # Where to download the crates from.
