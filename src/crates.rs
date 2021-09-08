@@ -3,7 +3,7 @@ use crate::mirror::{ConfigCrates, ConfigMirror};
 use crate::progress_bar::padded_prefix_message;
 use futures::StreamExt;
 use git2::Repository;
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
 use reqwest::header::HeaderValue;
 use serde::{Deserialize, Serialize};
 use std::fs::read_dir;
@@ -121,7 +121,8 @@ pub async fn sync_crates_files(
         .with_style(
             ProgressStyle::default_bar()
                 .template("{prefix} {wide_bar} {spinner} [{elapsed_precise}]")
-                .progress_chars("  "),
+                .progress_chars("  ")
+                .on_finish(ProgressFinish::AndLeave),
         )
         .with_prefix(prefix.clone());
     pb.enable_steady_tick(10);
@@ -176,12 +177,15 @@ pub async fn sync_crates_files(
     )
     .unwrap();
 
-    pb.finish_and_clear();
+    pb.finish();
     let pb = ProgressBar::new(changed_crates.len() as u64)
         .with_style(
             ProgressStyle::default_bar()
-                .template("{prefix} {wide_bar} {pos}/{len} [{elapsed_precise} / {duration_precise}]")
-                .progress_chars("█▉▊▋▌▍▎▏  "),
+                .template(
+                    "{prefix} {wide_bar} {pos}/{len} [{elapsed_precise} / {duration_precise}]",
+                )
+                .progress_chars("█▉▊▋▌▍▎▏  ")
+                .on_finish(ProgressFinish::AndLeave),
         )
         .with_prefix(prefix);
     pb.enable_steady_tick(10);

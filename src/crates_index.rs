@@ -1,4 +1,4 @@
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
 use serde::Serialize;
 use std::{io, num::TryFromIntError, path::Path};
 
@@ -42,7 +42,8 @@ pub fn sync_crates_repo(mirror_path: &Path, crates: &ConfigCrates) -> Result<(),
         .with_style(
             ProgressStyle::default_bar()
                 .template("{prefix} {wide_bar} {spinner} [{elapsed_precise}]")
-                .progress_chars("  "),
+                .progress_chars("  ")
+                .on_finish(ProgressFinish::AndLeave),
         )
         .with_prefix(prefix);
     // Enable the steady tick, so the transfer progress callback isn't spending its time

@@ -6,7 +6,7 @@ use crate::mirror::{ConfigMirror, ConfigRustup, MirrorError};
 use crate::progress_bar::{current_step_prefix, padded_prefix_message};
 use console::style;
 use futures::StreamExt;
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
 use reqwest::header::HeaderValue;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -276,7 +276,8 @@ pub async fn sync_rustup_init(
                 .template(
                     "{prefix} {wide_bar} {pos}/{len} [{elapsed_precise} / {duration_precise}]",
                 )
-                .progress_chars("█▉▊▋▌▍▎▏  "),
+                .progress_chars("█▉▊▋▌▍▎▏  ")
+                .on_finish(ProgressFinish::AndLeave),
         )
         .with_prefix(prefix);
     pb.enable_steady_tick(10);
@@ -507,7 +508,8 @@ pub fn clean_old_files(
                 .template(
                     "{prefix} {wide_bar} {pos}/{len} [{elapsed_precise} / {duration_precise}]",
                 )
-                .progress_chars("█▉▊▋▌▍▎▏  "),
+                .progress_chars("█▉▊▋▌▍▎▏  ")
+                .on_finish(ProgressFinish::AndLeave),
         )
         .with_prefix(prefix);
 
@@ -596,7 +598,8 @@ pub async fn sync_rustup_channel(
                 .template(
                     "{prefix} {wide_bar} {pos}/{len} [{elapsed_precise} / {duration_precise}]",
                 )
-                .progress_chars("█▉▊▋▌▍▎▏  "),
+                .progress_chars("█▉▊▋▌▍▎▏  ")
+                .on_finish(ProgressFinish::AndLeave),
         )
         .with_prefix(prefix);
     pb.enable_steady_tick(10);
