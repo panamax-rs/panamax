@@ -91,10 +91,10 @@ pub async fn sync_crates_files(
     let repo = Repository::open(&repo_path)?;
 
     // Set the crates.io URL, or None if default
-    let crates_source: Option<&str> = if crates.source == "https://crates.io/api/v1/crates" {
+    let crates_source = if crates.source == "https://crates.io/api/v1/crates" {
         None
     } else {
-        Some(crates.source.as_ref())
+        Some(crates.source.as_str())
     };
 
     // Find Reference for origin/master
