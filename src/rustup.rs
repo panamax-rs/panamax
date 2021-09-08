@@ -357,8 +357,8 @@ pub fn rustup_download_list(
                 pkg.target
                     .into_iter()
                     .filter(|(name, _)| {
-                        platforms.unix.contains(&name)
-                            || platforms.windows.contains(&name)
+                        platforms.unix.contains(name)
+                            || platforms.windows.contains(name)
                             || name == "*" // The * platform contains rust-src, always download
                     })
                     .flat_map(|(_, target)| -> Vec<(String, String)> {
@@ -399,7 +399,7 @@ pub async fn sync_one_rustup_target(
     //let target_url = path.join(url[source.len()..].trim_start_matches("/"));
     let target_url = format!("{}/{}", source, url);
     let target_path: PathBuf = std::iter::once(path.to_owned())
-        .chain(url.split('/').map(|e| PathBuf::from(e)))
+        .chain(url.split('/').map(PathBuf::from))
         .collect();
 
     download(
@@ -470,7 +470,7 @@ pub fn clean_old_files(
 
     if let Some(pinned_versions) = pinned_rust_versions {
         for version in pinned_versions {
-            let mut pinned = match get_channel_history(path, &version) {
+            let mut pinned = match get_channel_history(path, version) {
                 Ok(c) => c,
                 Err(_) => continue,
             };
@@ -544,7 +544,7 @@ pub fn add_to_channel_history(
         Err(SyncError::Io(_)) => ChannelHistoryFile {
             versions: HashMap::new(),
         },
-        Err(e) => Err(e)?,
+        Err(e) => return Err(e),
     };
 
     channel_history.versions.insert(
@@ -593,7 +593,7 @@ pub async fn sync_rustup_channel(
         download_dev,
         download_gz,
         download_xz,
-        &platforms,
+        platforms,
     )?;
     move_if_exists_with_sha256(&channel_part_path, &channel_path)?;
 
@@ -664,7 +664,7 @@ pub async fn sync(
     rustup: &ConfigRustup,
     user_agent: &HeaderValue,
 ) -> Result<(), MirrorError> {
-    let platforms = get_platforms(&rustup)?;
+    let platforms = get_platforms(rustup)?;
     // Default to not downloading rustc-dev
     let download_dev = rustup.download_dev.unwrap_or(false);
 
@@ -801,7 +801,7 @@ pub async fn sync(
                 &rustup.source,
                 rustup.download_threads,
                 prefix,
-                &version,
+                version,
                 mirror.retries,
                 user_agent,
                 download_dev,

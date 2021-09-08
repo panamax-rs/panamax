@@ -91,7 +91,7 @@ pub fn move_if_exists_with_sha256(from: &Path, to: &Path) -> Result<(), Download
     let sha256_from_path = append_to_path(from, ".sha256");
     let sha256_to_path = append_to_path(to, ".sha256");
     move_if_exists(&sha256_from_path, &sha256_to_path)?;
-    move_if_exists(&from, &to)?;
+    move_if_exists(from, to)?;
     Ok(())
 }
 
@@ -164,7 +164,7 @@ async fn one_download(
 
     if let Some(h) = hash {
         if f_hash == h {
-            move_if_exists(&part_path, &path)?;
+            move_if_exists(&part_path, path)?;
             Ok(())
         } else {
             let badsha_path = append_to_path(path, ".badsha256");

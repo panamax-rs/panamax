@@ -199,7 +199,6 @@ pub async fn sync_crates_files(
             let crates_source = crates_source.map(|s| s.to_string());
             let user_agent = user_agent.to_owned();
             let pb = pb.clone();
-            let c = c.to_owned();
 
             tokio::spawn(async move {
                 pb.inc(1);

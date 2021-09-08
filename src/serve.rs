@@ -119,7 +119,7 @@ pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<Tls
                     return Err(warp::reject::not_found());
                 }
                 let version = &crate_file[name.len() + 1..crate_file.len() - 6];
-                get_crate_file(mirror_path, &name, &version).await
+                get_crate_file(mirror_path, &name, version).await
             }
         },
     );
