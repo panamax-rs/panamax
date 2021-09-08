@@ -14,10 +14,9 @@ retries = 5
 
 
 # Contact information for the user agent.
-# As per crates.io crawling policy, lacking this information may cause your IP to be blocked.
-# It's recommended that this be set to your email address or a website you own.
-# If you're okay with this, this parameter can be removed.
-contact = "your@email.com"
+# This is entirely optional, and is not required for the crates.io CDN.
+# You may want to set this if you are mirroring from somewhere else.
+# contact = "your@email.com"
 
 
 [rustup]

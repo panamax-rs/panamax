@@ -113,14 +113,8 @@ pub fn init(path: &Path) -> Result<(), MirrorError> {
 }
 
 pub fn default_user_agent() -> String {
-    eprintln!("{}", style("No contact information was provided!").bold());
-    eprintln!(
-        "As per the crates.io crawling policy, lacking this may cause your IP to be blocked."
-    );
-    eprintln!("Please set this in your mirror.toml.");
-    eprintln!();
     format!(
-        "Panamax/{} (No contact information provided)",
+        "Panamax/{}",
         env!("CARGO_PKG_VERSION")
     )
 }
@@ -141,7 +135,7 @@ pub async fn sync(path: &Path) -> Result<(), MirrorError> {
     if let Some(crates) = &mirror.crates {
         if crates.sync && !is_new_crates_format(&path.join("crates"))? {
             eprintln!("Your crates directory is using the old 0.2 format, however");
-            eprintln!("Panamax 0.3 has deprecated this format for a new one.");
+            eprintln!("Panamax 0.3+ has deprecated this format for a new one.");
             eprintln!("Please delete crates/ from your mirror directory to continue.");
             return Ok(());
         }
