@@ -177,7 +177,7 @@ pub async fn sync_crates_files(
     )
     .unwrap();
 
-    pb.finish();
+    pb.finish_and_clear();
     let pb = ProgressBar::new(changed_crates.len() as u64)
         .with_style(
             ProgressStyle::default_bar()
