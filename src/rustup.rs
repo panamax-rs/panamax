@@ -451,7 +451,10 @@ pub fn clean_old_files(
     let mut files_to_keep: HashSet<PathBuf> = HashSet::new();
     for (channel, keep_version) in versions {
         if let Some(s) = keep_version {
-            let mut history = get_channel_history(path, channel)?;
+            let mut history = match get_channel_history(path, channel) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
             let latest_dates = latest_dates_from_channel_history(&history, s);
             for date in latest_dates {
                 if let Some(t) = history.versions.get_mut(&date) {
