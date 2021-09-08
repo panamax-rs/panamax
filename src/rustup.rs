@@ -585,21 +585,22 @@ pub async fn sync_rustup_channel(
     platforms: &Platforms,
 ) -> Result<(), SyncError> {
     // Download channel file
-    let (channel_url, channel_path, extra_files) = if let Some(inner_channel) = channel.strip_prefix("nightly-") {
-        let url = format!(
-            "{}/dist/{}/channel-rust-nightly.toml",
-            source, inner_channel
-        );
-        let path_chunk = format!("dist/{}/channel-rust-nightly.toml", inner_channel);
-        let path = path.join(&path_chunk);
-        // Make sure the cleanup step doesn't delete the channel toml
-        let extra_files = vec![path_chunk.clone(), format!("{}.sha256", path_chunk)];
-        (url, path, extra_files)
-    } else {
-        let url = format!("{}/dist/channel-rust-{}.toml", source, channel);
-        let path = path.join(format!("dist/channel-rust-{}.toml", channel));
-        (url, path, Vec::new())
-    };
+    let (channel_url, channel_path, extra_files) =
+        if let Some(inner_channel) = channel.strip_prefix("nightly-") {
+            let url = format!(
+                "{}/dist/{}/channel-rust-nightly.toml",
+                source, inner_channel
+            );
+            let path_chunk = format!("dist/{}/channel-rust-nightly.toml", inner_channel);
+            let path = path.join(&path_chunk);
+            // Make sure the cleanup step doesn't delete the channel toml
+            let extra_files = vec![path_chunk.clone(), format!("{}.sha256", path_chunk)];
+            (url, path, extra_files)
+        } else {
+            let url = format!("{}/dist/channel-rust-{}.toml", source, channel);
+            let path = path.join(format!("dist/channel-rust-{}.toml", channel));
+            (url, path, Vec::new())
+        };
     let channel_part_path = append_to_path(&channel_path, ".part");
     download_with_sha256_file(&channel_url, &channel_part_path, retries, true, user_agent).await?;
 

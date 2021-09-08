@@ -1,4 +1,4 @@
-use crate::crates_index::{IndexSyncError, fast_forward};
+use crate::crates_index::{fast_forward, IndexSyncError};
 use crate::download::{download, DownloadError};
 use crate::mirror::{ConfigCrates, ConfigMirror};
 use crate::progress_bar::padded_prefix_message;
