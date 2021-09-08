@@ -549,7 +549,7 @@ pub fn add_to_channel_history(
     };
 
     let files = files.iter().map(|(f, _)| f.to_string());
-    let extra_files = extra_files.into_iter().map(|ef| ef.to_string());
+    let extra_files = extra_files.iter().map(|ef| ef.to_string());
 
     let files = files.chain(extra_files).collect();
 
@@ -585,8 +585,7 @@ pub async fn sync_rustup_channel(
     platforms: &Platforms,
 ) -> Result<(), SyncError> {
     // Download channel file
-    let (channel_url, channel_path, extra_files) = if channel.starts_with("nightly-") {
-        let inner_channel = &channel[8..];
+    let (channel_url, channel_path, extra_files) = if let Some(inner_channel) = channel.strip_prefix("nightly-") {
         let url = format!(
             "{}/dist/{}/channel-rust-nightly.toml",
             source, inner_channel
