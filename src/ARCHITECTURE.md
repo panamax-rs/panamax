@@ -28,9 +28,7 @@ All details related to downloading (or more specifically, HTTP downloading) is c
 
 ### Progress Bar
 
-When a mirror is downloading or updating, a progress bar is displayed. This progress bar is used by all components and is made to be synchronized with multiple download threads.
-
-All details related to this component is covered in `progress_bar.rs`.
+When a mirror is downloading or updating, a progress bar is displayed. This file includes some common features of all progress bars within Panamax. This is covered in `progress_bar.rs`.
 
 ### Mirror Configuration
 
