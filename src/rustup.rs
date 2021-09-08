@@ -3,16 +3,14 @@ use crate::download::{
     move_if_exists, move_if_exists_with_sha256, write_file_create_dir, DownloadError,
 };
 use crate::mirror::{ConfigMirror, ConfigRustup, MirrorError};
-use crate::progress_bar::{
-    current_step_prefix, padded_prefix_message, progress_bar, ProgressBarMessage,
-};
+use crate::progress_bar::{current_step_prefix, padded_prefix_message};
 use console::style;
+use futures::StreamExt;
+use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
 use reqwest::header::HeaderValue;
-use scoped_threadpool::Pool;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::{Path, PathBuf};
 use std::{fs, io};
 use thiserror::Error;
 
@@ -202,7 +200,7 @@ pub fn get_platforms(rustup: &ConfigRustup) -> Result<Platforms, MirrorError> {
 }
 
 /// Synchronize one rustup-init file.
-pub fn sync_one_init(
+pub async fn sync_one_init(
     path: &Path,
     source: &str,
     platform: &str,
@@ -234,28 +232,25 @@ pub fn sync_one_init(
         format!("{}/rustup/dist/{}/rustup-init", source, platform)
     };
 
-    download_with_sha256_file(&source_url, &local_path, retries, false, user_agent)?;
-
+    download_with_sha256_file(&source_url, &local_path, retries, false, user_agent).await?;
     copy_file_create_dir_with_sha256(&local_path, &archive_path)?;
 
     Ok(())
 }
 
 /// Synchronize all rustup-init files.
-pub fn sync_rustup_init(
+pub async fn sync_rustup_init(
     path: &Path,
+    threads: usize,
     source: &str,
     prefix: String,
-    threads: usize,
     retries: usize,
     user_agent: &HeaderValue,
     platforms: &Platforms,
 ) -> Result<(), SyncError> {
     let count = platforms.unix.len() + platforms.windows.len();
 
-    let (pb_thread, sender) = progress_bar(Some(count), prefix);
-
-    let errors_occurred = AtomicUsize::new(0);
+    let mut errors_occurred = 0usize;
 
     // Download rustup release file
     let release_url = format!("{}/rustup/release-stable.toml", source);
@@ -269,95 +264,75 @@ pub fn sync_rustup_init(
         retries,
         false,
         user_agent,
-    )?;
+    )
+    .await?;
 
     let rustup_version = get_rustup_version(&release_part_path)?;
 
     move_if_exists(&release_part_path, &release_path)?;
 
-    Pool::new(threads as u32).scoped(|scoped| {
-        let error_occurred = &errors_occurred;
-        for platform in &platforms.unix {
-            let s = sender.clone();
+    let pb = ProgressBar::new(count as u64)
+        .with_style(
+            ProgressStyle::default_bar()
+                .template(
+                    "{prefix} {wide_bar} {pos}/{len} [{elapsed_precise} / {duration_precise}]",
+                )
+                .progress_chars("█▉▊▋▌▍▎▏  ")
+                .on_finish(ProgressFinish::AndLeave),
+        )
+        .with_prefix(prefix);
+    pb.enable_steady_tick(10);
+
+    let tasks = futures::stream::iter(platforms.unix.iter().chain(platforms.windows.iter()))
+        .map(|platform| {
+            // Clone the variables that will be moved into the tokio task.
             let rustup_version = rustup_version.clone();
-            scoped.execute(move || {
-                if let Err(e) = sync_one_init(
-                    path,
-                    source,
+            let path = path.to_path_buf();
+            let source = source.to_string();
+            let user_agent = user_agent.clone();
+            let platform = platform.clone();
+            let pb = pb.clone();
+
+            tokio::spawn(async move {
+                pb.inc(1);
+
+                sync_one_init(
+                    &path,
+                    &source,
                     platform.as_str(),
                     false,
                     &rustup_version,
                     retries,
-                    user_agent,
-                ) {
-                    match e {
-                        DownloadError::NotFound {
-                            status: _,
-                            url: _,
-                            data: _,
-                        } => {}
-                        _ => {
-                            s.send(ProgressBarMessage::Println(format!(
-                                "Downloading {} failed: {:?}",
-                                path.display(),
-                                e
-                            )))
-                            .expect("Channel send should not fail");
-                            error_occurred.fetch_add(1, Ordering::Release);
-                        }
-                    }
-                }
-                s.send(ProgressBarMessage::Increment)
-                    .expect("Channel send should not fail");
+                    &user_agent,
+                )
+                .await
             })
-        }
+        })
+        .buffer_unordered(threads)
+        .collect::<Vec<_>>()
+        .await;
 
-        for platform in &platforms.windows {
-            let s = sender.clone();
-            let rustup_version = rustup_version.clone();
-            scoped.execute(move || {
-                if let Err(e) = sync_one_init(
-                    path,
-                    source,
-                    platform,
-                    true,
-                    &rustup_version,
-                    retries,
-                    user_agent,
-                ) {
-                    match e {
-                        DownloadError::NotFound {
-                            status: _,
-                            url: _,
-                            data: _,
-                        } => {}
-                        _ => {
-                            s.send(ProgressBarMessage::Println(format!(
-                                "Downloading {} failed: {:?}",
-                                path.display(),
-                                e
-                            )))
-                            .expect("Channel send should not fail");
-                            error_occurred.fetch_add(1, Ordering::Release);
-                        }
-                    }
+    for res in tasks {
+        // Unwrap the join result.
+        let res = res.unwrap();
+
+        if let Err(e) = res {
+            match e {
+                DownloadError::NotFound { .. } => {}
+                _ => {
+                    errors_occurred += 1;
+                    eprintln!("Download failed: {:?}", e);
                 }
-                s.send(ProgressBarMessage::Increment)
-                    .expect("Channel send should not fail");
-            })
+            }
         }
-    });
+    }
 
-    sender
-        .send(ProgressBarMessage::Done)
-        .expect("Channel send should not fail");
-    pb_thread.join().expect("Thread join should not fail");
-
-    let errors = errors_occurred.load(Ordering::Acquire);
-    if errors == 0 {
+    if errors_occurred == 0 {
         Ok(())
     } else {
-        Err(SyncError::FailedDownloads { count: errors })
+        Err(SyncError::FailedDownloads {
+            count: errors_occurred,
+        })
     }
 }
 
@@ -365,6 +340,8 @@ pub fn sync_rustup_init(
 pub fn rustup_download_list(
     path: &Path,
     download_dev: bool,
+    download_gz: bool,
+    download_xz: bool,
     platforms: &Platforms,
 ) -> Result<(String, Vec<(String, String)>), SyncError> {
     let channel_str = fs::read_to_string(path).map_err(DownloadError::Io)?;
@@ -387,7 +364,17 @@ pub fn rustup_download_list(
                     .flat_map(|(_, target)| -> Vec<(String, String)> {
                         target
                             .target_urls
-                            .map(|urls| vec![(urls.url, urls.hash), (urls.xz_url, urls.xz_hash)])
+                            .map(|urls| {
+                                let mut v = Vec::new();
+                                if download_gz {
+                                    v.push((urls.url, urls.hash));
+                                }
+                                if download_xz {
+                                    v.push((urls.xz_url, urls.xz_hash));
+                                }
+
+                                v
+                            })
                             .into_iter()
                             .flatten()
                             .map(|(url, hash)| {
@@ -400,7 +387,7 @@ pub fn rustup_download_list(
     ))
 }
 
-pub fn sync_one_rustup_target(
+pub async fn sync_one_rustup_target(
     path: &Path,
     source: &str,
     url: &str,
@@ -411,7 +398,9 @@ pub fn sync_one_rustup_target(
     // Chop off the source portion of the URL, to mimic the rest of the path
     //let target_url = path.join(url[source.len()..].trim_start_matches("/"));
     let target_url = format!("{}/{}", source, url);
-    let target_path = path.join(url);
+    let target_path: PathBuf = std::iter::once(path.to_owned())
+        .chain(url.split('/').map(|e| PathBuf::from(e)))
+        .collect();
 
     download(
         &target_url,
@@ -420,8 +409,8 @@ pub fn sync_one_rustup_target(
         retries,
         false,
         user_agent,
-    )?;
-    Ok(())
+    )
+    .await
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -452,49 +441,44 @@ pub fn clean_old_files(
     pinned_rust_versions: Option<&Vec<String>>,
     prefix: String,
 ) -> Result<(), SyncError> {
+    let versions = [
+        ("stable", keep_stables),
+        ("beta", keep_betas),
+        ("nightly", keep_nightlies),
+    ];
+
     // Handle all of stable/beta/nightly
-    let mut files_to_keep: HashSet<String> = HashSet::new();
-    if let Some(s) = keep_stables {
-        let mut stable = get_channel_history(path, "stable")?;
-        let latest_dates = latest_dates_from_channel_history(&stable, s);
-        for date in latest_dates {
-            if let Some(t) = stable.versions.get_mut(&date) {
-                t.iter().for_each(|t| {
-                    files_to_keep.insert(t.to_string());
-                });
+    let mut files_to_keep: HashSet<PathBuf> = HashSet::new();
+    for (channel, keep_version) in versions {
+        if let Some(s) = keep_version {
+            let mut history = get_channel_history(path, channel)?;
+            let latest_dates = latest_dates_from_channel_history(&history, s);
+            for date in latest_dates {
+                if let Some(t) = history.versions.get_mut(&date) {
+                    t.iter().for_each(|t| {
+                        // Convert the path to a PathBuf.
+                        let path: PathBuf = t.split('/').collect();
+                        files_to_keep.insert(path);
+                    });
+                }
             }
         }
     }
-    if let Some(b) = keep_betas {
-        let mut beta = get_channel_history(path, "beta")?;
-        let latest_dates = latest_dates_from_channel_history(&beta, b);
-        for date in latest_dates {
-            if let Some(t) = beta.versions.get_mut(&date) {
-                t.iter().for_each(|t| {
-                    files_to_keep.insert(t.to_string());
-                });
-            }
-        }
-    }
-    if let Some(n) = keep_nightlies {
-        let mut nightly = get_channel_history(path, "nightly")?;
-        let latest_dates = latest_dates_from_channel_history(&nightly, n);
-        for date in latest_dates {
-            if let Some(t) = nightly.versions.get_mut(&date) {
-                t.iter().for_each(|t| {
-                    files_to_keep.insert(t.to_string());
-                });
-            }
-        }
-    }
+
     if let Some(pinned_versions) = pinned_rust_versions {
         for version in pinned_versions {
-            let mut pinned = get_channel_history(path, &version)?;
+            let mut pinned = match get_channel_history(path, &version) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
             let latest_dates = latest_dates_from_channel_history(&pinned, 1);
             for date in latest_dates {
                 if let Some(t) = pinned.versions.get_mut(&date) {
                     t.iter().for_each(|t| {
-                        files_to_keep.insert(t.to_string());
+                        // Convert the path to a PathBuf.
+                        let path: PathBuf = t.split('/').collect();
+
+                        files_to_keep.insert(path);
                     });
                 }
             }
@@ -502,7 +486,7 @@ pub fn clean_old_files(
     }
 
     let dist_path = path.join("dist");
-    let mut files_to_delete: Vec<String> = vec![];
+    let mut files_to_delete = Vec::new();
 
     for dir in fs::read_dir(dist_path)? {
         let dir = dir?.path();
@@ -510,50 +494,40 @@ pub fn clean_old_files(
             for full_path in fs::read_dir(dir)? {
                 let full_path = full_path?.path();
                 let file_path = full_path.strip_prefix(path)?;
-                if let Some(file_path) = file_path.to_str() {
-                    if !files_to_keep.contains(file_path) {
-                        files_to_delete.push(file_path.to_string());
-                    }
+
+                if !files_to_keep.contains(file_path) {
+                    files_to_delete.push(file_path.to_owned());
                 }
             }
         }
     }
 
     // Progress bar!
-    let (pb_thread, sender) = progress_bar(Some(files_to_delete.len()), prefix);
+    let pb = ProgressBar::new(files_to_delete.len() as u64)
+        .with_style(
+            ProgressStyle::default_bar()
+                .template(
+                    "{prefix} {wide_bar} {pos}/{len} [{elapsed_precise} / {duration_precise}]",
+                )
+                .progress_chars("█▉▊▋▌▍▎▏  ")
+                .on_finish(ProgressFinish::AndLeave),
+        )
+        .with_prefix(prefix);
 
     for f in files_to_delete {
         if let Err(e) = fs::remove_file(path.join(&f)) {
-            sender
-                .send(ProgressBarMessage::Println(format!(
-                    "Could not remove file {}: {:?}",
-                    f, e
-                )))
-                .expect("Channel send should not fail");
+            eprintln!("Could not remove file {}: {:?}", f.to_string_lossy(), e);
         }
-        sender
-            .send(ProgressBarMessage::Increment)
-            .expect("Channel send should not fail");
+        pb.inc(1);
     }
-
-    sender
-        .send(ProgressBarMessage::Done)
-        .expect("Channel send should not fail");
-    pb_thread.join().expect("Thread join should not fail");
 
     Ok(())
 }
 
 pub fn get_channel_history(path: &Path, channel: &str) -> Result<ChannelHistoryFile, SyncError> {
     let channel_history_path = path.join(format!("mirror-{}-history.toml", channel));
-    if channel_history_path.exists() {
-        let ch_data = fs::read_to_string(channel_history_path)?;
-        Ok(toml::from_str(&ch_data)?)
-    } else {
-        Ok(ChannelHistoryFile {
-            versions: HashMap::new(),
-        })
-    }
+    let ch_data = fs::read_to_string(channel_history_path)?;
+    Ok(toml::from_str(&ch_data)?)
 }
 
 pub fn add_to_channel_history(
@@ -562,7 +536,14 @@ pub fn add_to_channel_history(
     date: &str,
     files: &[(String, String)],
 ) -> Result<(), SyncError> {
-    let mut channel_history = get_channel_history(path, channel)?;
+    let mut channel_history = match get_channel_history(path, channel) {
+        Ok(c) => c,
+        Err(SyncError::Io(_)) => ChannelHistoryFile {
+            versions: HashMap::new(),
+        },
+        Err(e) => Err(e)?,
+    };
+
     channel_history.versions.insert(
         date.to_string(),
         files.iter().map(|(f, _)| f.to_string()).collect(),
@@ -584,7 +565,7 @@ pub fn get_rustup_version(path: &Path) -> Result<String, SyncError> {
 
 /// Synchronize a rustup channel (stable, beta, or nightly).
 #[allow(clippy::too_many_arguments)]
-pub fn sync_rustup_channel(
+pub async fn sync_rustup_channel(
     path: &Path,
     source: &str,
     threads: usize,
@@ -593,64 +574,88 @@ pub fn sync_rustup_channel(
     retries: usize,
     user_agent: &HeaderValue,
     download_dev: bool,
+    download_gz: bool,
+    download_xz: bool,
     platforms: &Platforms,
 ) -> Result<(), SyncError> {
     // Download channel file
     let channel_url = format!("{}/dist/channel-rust-{}.toml", source, channel);
     let channel_path = path.join(format!("dist/channel-rust-{}.toml", channel));
     let channel_part_path = append_to_path(&channel_path, ".part");
-    download_with_sha256_file(&channel_url, &channel_part_path, retries, true, user_agent)?;
+    download_with_sha256_file(&channel_url, &channel_part_path, retries, true, user_agent).await?;
 
     // Open toml file, find all files to download
-    let (date, files) = rustup_download_list(&channel_part_path, download_dev, &platforms)?;
+    let (date, files) = rustup_download_list(
+        &channel_part_path,
+        download_dev,
+        download_gz,
+        download_xz,
+        &platforms,
+    )?;
+    move_if_exists_with_sha256(&channel_part_path, &channel_path)?;
 
-    // Create progress bar
-    let (pb_thread, sender) = progress_bar(Some(files.len()), prefix);
+    let pb = ProgressBar::new((files.len()) as u64)
+        .with_style(
+            ProgressStyle::default_bar()
+                .template(
+                    "{prefix} {wide_bar} {pos}/{len} [{elapsed_precise} / {duration_precise}]",
+                )
+                .progress_chars("█▉▊▋▌▍▎▏  ")
+                .on_finish(ProgressFinish::AndLeave),
+        )
+        .with_prefix(prefix);
+    pb.enable_steady_tick(10);
 
-    let errors_occurred = AtomicUsize::new(0);
+    let mut errors_occurred = 0usize;
 
-    // Download files
-    Pool::new(threads as u32).scoped(|scoped| {
-        let error_occurred = &errors_occurred;
-        for (url, hash) in &files {
-            let s = sender.clone();
-            scoped.execute(move || {
-                if let Err(e) =
-                    sync_one_rustup_target(&path, &source, &url, &hash, retries, user_agent)
-                {
-                    s.send(ProgressBarMessage::Println(format!(
-                        "Downloading {} failed: {:?}",
-                        path.display(),
-                        e
-                    )))
-                    .expect("Channel send should not fail");
-                    error_occurred.fetch_add(1, Ordering::Release);
-                }
-                s.send(ProgressBarMessage::Increment)
-                    .expect("Channel send should not fail");
+    let tasks = futures::stream::iter(files.iter())
+        .map(|(url, hash)| {
+            // Clone the variables that will be moved into the tokio task.
+            let path = path.to_path_buf();
+            let source = source.to_string();
+            let user_agent = user_agent.clone();
+            let url = url.clone();
+            let hash = hash.clone();
+            let pb = pb.clone();
+
+            tokio::spawn(async move {
+                pb.inc(1);
+
+                sync_one_rustup_target(&path, &source, &url, &hash, retries, &user_agent).await
             })
+        })
+        .buffer_unordered(threads)
+        .collect::<Vec<_>>()
+        .await;
+
+    for res in tasks {
+        // Unwrap the join result.
+        let res = res.unwrap();
+
+        if let Err(e) = res {
+            match e {
+                DownloadError::NotFound { .. } => {}
+                _ => {
+                    errors_occurred += 1;
+                    eprintln!("Download failed: {:?}", e);
+                }
+            }
         }
-    });
+    }
 
-    // Wait for progress bar to finish
-    sender
-        .send(ProgressBarMessage::Done)
-        .expect("Channel send should not fail");
-    pb_thread.join().expect("Thread join should not fail");
-
-    let errors = errors_occurred.load(Ordering::Acquire);
-    if errors == 0 {
+    if errors_occurred == 0 {
         // Write channel history file
         add_to_channel_history(path, channel, &date, &files)?;
-        move_if_exists_with_sha256(&channel_part_path, &channel_path)?;
         Ok(())
     } else {
-        Err(SyncError::FailedDownloads { count: errors })
+        Err(SyncError::FailedDownloads {
+            count: errors_occurred,
+        })
     }
 }
 
 /// Synchronize rustup.
-pub fn sync(
+pub async fn sync(
     path: &Path,
     mirror: &ConfigMirror,
     rustup: &ConfigRustup,
@@ -659,6 +664,9 @@ pub fn sync(
     let platforms = get_platforms(&rustup)?;
     // Default to not downloading rustc-dev
     let download_dev = rustup.download_dev.unwrap_or(false);
+
+    let download_gz = rustup.download_gz.unwrap_or(false);
+    let download_xz = rustup.download_xz.unwrap_or(true);
 
     let num_pinned_versions = rustup.pinned_rust_versions.as_ref().map_or(0, |v| v.len());
     let num_steps = 1 + // sync rustup-init
@@ -674,13 +682,15 @@ pub fn sync(
     let prefix = padded_prefix_message(step, num_steps, "Syncing rustup-init files");
     if let Err(e) = sync_rustup_init(
         path,
+        rustup.download_threads,
         &rustup.source,
         prefix,
-        rustup.download_threads,
         mirror.retries,
         user_agent,
         &platforms,
-    ) {
+    )
+    .await
+    {
         eprintln!("Downloading rustup init files failed: {:?}", e);
         eprintln!("You will need to sync again to finish this download.");
     }
@@ -700,8 +710,12 @@ pub fn sync(
             mirror.retries,
             user_agent,
             download_dev,
+            download_gz,
+            download_xz,
             &platforms,
-        ) {
+        )
+        .await
+        {
             failures = true;
             eprintln!("Downloading stable release failed: {:?}", e);
             eprintln!("You will need to sync again to finish this download.");
@@ -726,8 +740,12 @@ pub fn sync(
             mirror.retries,
             user_agent,
             download_dev,
+            download_gz,
+            download_xz,
             &platforms,
-        ) {
+        )
+        .await
+        {
             failures = true;
             eprintln!("Downloading beta release failed: {:?}", e);
             eprintln!("You will need to sync again to finish this download.");
@@ -752,8 +770,12 @@ pub fn sync(
             mirror.retries,
             user_agent,
             download_dev,
+            download_gz,
+            download_xz,
             &platforms,
-        ) {
+        )
+        .await
+        {
             failures = true;
             eprintln!("Downloading nightly release failed: {:?}", e);
             eprintln!("You will need to sync again to finish this download.");
@@ -780,8 +802,12 @@ pub fn sync(
                 mirror.retries,
                 user_agent,
                 download_dev,
+                download_gz,
+                download_xz,
                 &platforms,
-            ) {
+            )
+            .await
+            {
                 failures = true;
                 if let SyncError::Download(DownloadError::NotFound { .. }) = e {
                     eprintln!(

@@ -83,12 +83,13 @@ enum Panamax {
     },
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     env_logger::init();
     let opt = Panamax::from_args();
     match opt {
         Panamax::Init { path } => mirror::init(&path),
-        Panamax::Sync { path } => mirror::sync(&path),
+        Panamax::Sync { path } => mirror::sync(&path).await,
         Panamax::Rewrite { path, base_url } => mirror::rewrite(&path, base_url),
         Panamax::Serve {
             path,
@@ -97,7 +98,7 @@ fn main() {
             cert_path,
             key_path,
         } => mirror::serve(path, listen, port, cert_path, key_path),
-        Panamax::ListPlatforms { source, channel } => mirror::list_platforms(source, channel),
+        Panamax::ListPlatforms { source, channel } => mirror::list_platforms(source, channel).await,
     }
     .unwrap_or_else(|e| eprintln!("Panamax command failed! {}", e));
 }

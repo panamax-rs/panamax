@@ -40,6 +40,8 @@ pub struct ConfigRustup {
     pub download_threads: usize,
     pub source: String,
     pub download_dev: Option<bool>,
+    pub download_gz: Option<bool>,
+    pub download_xz: Option<bool>,
     pub platforms_unix: Option<Vec<String>>,
     pub platforms_windows: Option<Vec<String>>,
     pub keep_latest_stables: Option<usize>,
@@ -123,7 +125,7 @@ pub fn default_user_agent() -> String {
     )
 }
 
-pub fn sync(path: &Path) -> Result<(), MirrorError> {
+pub async fn sync(path: &Path) -> Result<(), MirrorError> {
     if !path.join("mirror.toml").exists() {
         eprintln!(
             "Mirror base not found! Run panamax init {} first.",
@@ -170,7 +172,7 @@ pub fn sync(path: &Path) -> Result<(), MirrorError> {
 
     if let Some(rustup) = mirror.rustup {
         if rustup.sync {
-            crate::rustup::sync(path, &mirror.mirror, &rustup, &user_agent)?;
+            crate::rustup::sync(path, &mirror.mirror, &rustup, &user_agent).await?;
         } else {
             eprintln!("Rustup sync is disabled, skipping...");
         }
@@ -180,7 +182,7 @@ pub fn sync(path: &Path) -> Result<(), MirrorError> {
 
     if let Some(crates) = mirror.crates {
         if crates.sync {
-            sync_crates(path, &mirror.mirror, &crates, &user_agent);
+            sync_crates(path, &mirror.mirror, &crates, &user_agent).await;
         } else {
             eprintln!("Crates sync is disabled, skipping...");
         }
@@ -226,7 +228,7 @@ pub fn rewrite(path: &Path, base_url: Option<String>) -> Result<(), MirrorError>
 }
 
 /// Synchronize and handle the crates.io-index repository.
-pub fn sync_crates(
+pub async fn sync_crates(
     path: &Path,
     mirror: &ConfigMirror,
     crates: &ConfigCrates,
@@ -240,7 +242,7 @@ pub fn sync_crates(
         return;
     }
 
-    if let Err(e) = crate::crates::sync_crates_files(path, mirror, crates, user_agent) {
+    if let Err(e) = crate::crates::sync_crates_files(path, mirror, crates, user_agent).await {
         eprintln!("Downloading crates failed: {:?}", e);
         eprintln!("You will need to sync again to finish this download.");
         return;
@@ -296,11 +298,11 @@ pub fn serve(
 }
 
 /// Print out a list of all platforms.
-pub(crate) fn list_platforms(source: String, channel: String) -> Result<(), MirrorError> {
+pub(crate) async fn list_platforms(source: String, channel: String) -> Result<(), MirrorError> {
     let channel_url = format!("{}/dist/channel-rust-{}.toml", source, channel);
     let user_agent = HeaderValue::from_str(&format!("Panamax/{}", env!("CARGO_PKG_VERSION")))
         .expect("Hardcoded user agent string should never fail.");
-    let channel_str = download_string(&channel_url, &user_agent)?;
+    let channel_str = download_string(&channel_url, &user_agent).await?;
     let channel_data: Channel = toml::from_str(&channel_str)?;
 
     let mut targets = HashSet::new();

@@ -30,9 +30,15 @@ contact = "your@email.com"
 sync = true
 
 
-# Number of download threads to use when downloading rustup components.
-# This should be set lower than crates, as rustup consists of large files.
-download_threads = 4
+# Whether to mirror XZ archives. These archives are more efficiently compressed
+# than the GZ archives, and rustup uses them by default.
+download_xz = true
+# Whether to mirror GZ archives, for further backwards compatibility with rustup.
+download_gz = false
+
+
+# Number of downloads that can be ran in parallel.
+download_threads = 8
 
 
 # Where to download rustup files from.
@@ -102,9 +108,8 @@ download_dev = true
 sync = true
 
 
-# Number of download threads to use when downloading crates components.
-# This should be set higher than rustup, as crates consist of many small files.
-download_threads = 16
+# Number of downloads that can be ran in parallel.
+download_threads = 8
 
 
 # Where to download the crates from.

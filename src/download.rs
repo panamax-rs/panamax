@@ -1,11 +1,12 @@
-use reqwest::blocking::Client;
 use reqwest::header::{HeaderValue, USER_AGENT};
+use reqwest::Client;
 use sha2::{Digest, Sha256};
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 use thiserror::Error;
+use tokio::io::AsyncReadExt;
 
 #[derive(Error, Debug)]
 pub enum DownloadError {
@@ -25,17 +26,20 @@ pub enum DownloadError {
     },
 }
 
-thread_local!(static CLIENT: Client = Client::new());
-
 /// Download a URL and return it as a string.
-pub fn download_string(from: &str, user_agent: &HeaderValue) -> Result<String, DownloadError> {
-    Ok(CLIENT.with(|client| {
-        client
-            .get(from)
-            .header(USER_AGENT, user_agent)
-            .send()?
-            .text()
-    })?)
+pub async fn download_string(
+    from: &str,
+    user_agent: &HeaderValue,
+) -> Result<String, DownloadError> {
+    let client = Client::new();
+
+    Ok(client
+        .get(from)
+        .header(USER_AGENT, user_agent)
+        .send()
+        .await?
+        .text()
+        .await?)
 }
 
 /// Append a string to a path.
@@ -116,68 +120,68 @@ pub fn copy_file_create_dir(from: &Path, to: &Path) -> Result<(), DownloadError>
     Ok(())
 }
 
-fn one_download(
+async fn one_download(
     url: &str,
     path: &Path,
     hash: Option<&str>,
     user_agent: &HeaderValue,
 ) -> Result<(), DownloadError> {
-    CLIENT.with(|client| {
-        let mut http_res = client.get(url).header(USER_AGENT, user_agent).send()?;
-        let part_path = append_to_path(path, ".part");
-        let mut sha256 = Sha256::new();
-        {
-            let mut f = create_file_create_dir(&part_path)?;
-            let mut buf = [0u8; 65536];
-            let status = http_res.status();
-            if status == 403 || status == 404 {
-                let forbidden_path = append_to_path(path, ".notfound");
-                let text = http_res.text()?;
-                fs::write(
-                    forbidden_path,
-                    format!("Server returned {}: {}", status, &text),
-                )?;
-                return Err(DownloadError::NotFound {
-                    status: status.as_u16(),
-                    url: url.to_string(),
-                    data: text,
-                });
-            }
-            loop {
-                let byte_count = http_res.read(&mut buf)?;
-                if byte_count == 0 {
-                    break;
-                }
-                if hash.is_some() {
-                    sha256.update(&buf[..byte_count]);
-                }
-                f.write_all(&buf[..byte_count])?;
-            }
+    let client = Client::new();
+
+    let mut http_res = client
+        .get(url)
+        .header(USER_AGENT, user_agent)
+        .send()
+        .await?;
+    let part_path = append_to_path(path, ".part");
+    let mut sha256 = Sha256::new();
+    {
+        let mut f = create_file_create_dir(&part_path)?;
+        let status = http_res.status();
+        if status == 403 || status == 404 {
+            let forbidden_path = append_to_path(path, ".notfound");
+            let text = http_res.text().await?;
+            fs::write(
+                forbidden_path,
+                format!("Server returned {}: {}", status, &text),
+            )?;
+            return Err(DownloadError::NotFound {
+                status: status.as_u16(),
+                url: url.to_string(),
+                data: text,
+            });
         }
 
-        let f_hash = format!("{:x}", sha256.finalize());
-
-        if let Some(h) = hash {
-            if f_hash == h {
-                move_if_exists(&part_path, &path)?;
-                Ok(())
-            } else {
-                let badsha_path = append_to_path(path, ".badsha256");
-                fs::write(badsha_path, &f_hash)?;
-                Err(DownloadError::MismatchedHash {
-                    expected: h.to_string(),
-                    actual: f_hash,
-                })
+        while let Some(chunk) = http_res.chunk().await? {
+            if hash.is_some() {
+                sha256.update(&chunk);
             }
-        } else {
-            fs::rename(part_path, path)?;
+            f.write_all(&chunk)?;
+        }
+    }
+
+    let f_hash = format!("{:x}", sha256.finalize());
+
+    if let Some(h) = hash {
+        if f_hash == h {
+            move_if_exists(&part_path, &path)?;
             Ok(())
+        } else {
+            let badsha_path = append_to_path(path, ".badsha256");
+            fs::write(badsha_path, &f_hash)?;
+            Err(DownloadError::MismatchedHash {
+                expected: h.to_string(),
+                actual: f_hash,
+            })
         }
-    })
+    } else {
+        fs::rename(part_path, path)?;
+        Ok(())
+    }
 }
 
 /// Download file, verifying its hash, and retrying if needed
-pub fn download(
+pub async fn download(
     url: &str,
     path: &Path,
     hash: Option<&str>,
@@ -186,24 +190,44 @@ pub fn download(
     user_agent: &HeaderValue,
 ) -> Result<(), DownloadError> {
     if path.exists() && !force_download {
-        Ok(())
-    } else {
-        let mut res = Ok(());
-        for _ in 0..=retries {
-            res = match one_download(url, path, hash, user_agent) {
-                Ok(_) => break,
-                Err(e) => Err(e),
+        if let Some(h) = hash {
+            // Verify SHA-256 hash on the filesystem.
+            let mut file = tokio::fs::File::open(path).await?;
+            let mut buf = [0u8; 4096];
+            let mut sha256 = Sha256::new();
+
+            loop {
+                let n = file.read(&mut buf).await?;
+                if n == 0 {
+                    break;
+                }
+
+                sha256.update(&buf[..n]);
             }
+
+            let f_hash = format!("{:x}", sha256.finalize());
+            if h == f_hash {
+                // Calculated hash matches specified hash.
+                return Ok(());
+            }
+        } else {
+            return Ok(());
         }
-        if res.is_err() {
-            return res;
-        }
-        Ok(())
     }
+
+    let mut res = Ok(());
+    for _ in 0..=retries {
+        res = match one_download(url, path, hash, user_agent).await {
+            Ok(_) => break,
+            Err(e) => Err(e),
+        }
+    }
+
+    res
 }
 
 /// Download file and associated .sha256 file, verifying the hash, and retrying if needed
-pub fn download_with_sha256_file(
+pub async fn download_with_sha256_file(
     url: &str,
     path: &Path,
     retries: usize,
@@ -211,20 +235,18 @@ pub fn download_with_sha256_file(
     user_agent: &HeaderValue,
 ) -> Result<(), DownloadError> {
     let sha256_url = format!("{}.sha256", url);
-    let sha256_data = download_string(&sha256_url, user_agent)?;
+    let sha256_data = download_string(&sha256_url, user_agent).await?;
 
     let sha256_hash = &sha256_data[..64];
-    let res = download(
+    download(
         url,
         path,
         Some(sha256_hash),
         retries,
         force_download,
         user_agent,
-    );
-    if res.is_err() {
-        return res;
-    }
+    )
+    .await?;
 
     let sha256_path = append_to_path(path, ".sha256");
     write_file_create_dir(&sha256_path, &sha256_data)?;

@@ -1,3 +1,4 @@
+use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
 use serde::Serialize;
 use std::{io, num::TryFromIntError, path::Path};
 
@@ -8,7 +9,7 @@ use git2::{
 use thiserror::Error;
 
 use crate::mirror::ConfigCrates;
-use crate::progress_bar::{padded_prefix_message, progress_bar, ProgressBarMessage};
+use crate::progress_bar::padded_prefix_message;
 
 #[derive(Error, Debug)]
 pub enum IndexSyncError {
@@ -36,22 +37,36 @@ struct ConfigJson {
 pub fn sync_crates_repo(mirror_path: &Path, crates: &ConfigCrates) -> Result<(), IndexSyncError> {
     let repo_path = mirror_path.join("crates.io-index");
 
-    // Set up progress bar piping.
     let prefix = padded_prefix_message(1, 3, "Fetching crates.io-index");
-    let (pb_thread, sender) = progress_bar(None, prefix);
+    let pb = ProgressBar::new_spinner()
+        .with_style(
+            ProgressStyle::default_bar()
+                .template("{prefix} {wide_bar} {spinner} [{elapsed_precise}]")
+                .progress_chars("  ")
+                .on_finish(ProgressFinish::AndLeave),
+        )
+        .with_prefix(prefix);
+    // Enable the steady tick, so the transfer progress callback isn't spending its time
+    // updating the progress bar.
+    pb.enable_steady_tick(10);
 
     // Libgit2 has callbacks that allow us to update the progress bar
     // as the git download progresses.
-    let mut remote_callbacks = RemoteCallbacks::new();
+    // FIXME: Enabling progress updates causes checkout times to balloon.
+    let remote_callbacks = RemoteCallbacks::new();
+    /*
     remote_callbacks.transfer_progress(|p| {
-        sender
-            .send(ProgressBarMessage::SetProgress(
-                p.indexed_objects(),
-                p.total_objects(),
-            ))
-            .expect("Channel send should not fail");
+        if p.received_objects() == p.total_objects() {
+            pb.set_length(p.total_deltas() as u64);
+            pb.set_position(p.indexed_deltas() as u64);
+        } else {
+            pb.set_length(p.total_objects() as u64);
+            pb.set_position(p.indexed_objects() as u64);
+        }
+
         true
     });
+    */
     let mut fetch_opts = FetchOptions::new();
     fetch_opts.remote_callbacks(remote_callbacks);
 
@@ -68,11 +83,6 @@ pub fn sync_crates_repo(mirror_path: &Path, crates: &ConfigCrates) -> Result<(),
         // Note that this means config.json changes will have to be rewritten on every sync.
         fast_forward(&repo_path)?;
     }
-
-    sender
-        .send(ProgressBarMessage::Done)
-        .expect("Channel send should not fail");
-    pb_thread.join().expect("Thread join should not fail");
 
     Ok(())
 }
