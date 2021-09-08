@@ -147,6 +147,21 @@ $ cargo install ripgrep
 This will install the grep-like `rg` tool (which is a great tool - props to burntsushi!). If `cargo` successfully downloads and builds everything, you have yourself a working mirror. Congratulations!
 
 
+### Proxies
+
+If you need to run Panamax through a proxy, you will need to set your configuration options in two places.
+
+First, you'll need to set the environment variable `http_proxy` to something like `https://your.proxy:1234` (which can be http or https).
+
+Second, you'll need to set an http proxy in your `~/.gitconfig`, like so:
+
+```
+[http]
+    proxy = https://your.proxy:1234
+```
+
+With these two parameters set, Panamax should work through an HTTP proxy.
+
 ## License
 
 Licensed under the terms of the MIT license and the Apache License (Version 2.0)

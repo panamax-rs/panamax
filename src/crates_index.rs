@@ -67,8 +67,13 @@ pub fn sync_crates_repo(mirror_path: &Path, crates: &ConfigCrates) -> Result<(),
         true
     });
     */
+
+    let mut proxy_opts = git2::ProxyOptions::new();
+    proxy_opts.auto();
+
     let mut fetch_opts = FetchOptions::new();
     fetch_opts.remote_callbacks(remote_callbacks);
+    fetch_opts.proxy_options(proxy_opts);
 
     if !repo_path.join(".git").exists() {
         clone_repository(fetch_opts, &crates.source_index, &repo_path)?
