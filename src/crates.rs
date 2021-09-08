@@ -214,7 +214,7 @@ pub async fn sync_crates_files(
                 .await
             })
         })
-        .buffer_unordered(64)
+        .buffer_unordered(crates.download_threads)
         .collect::<Vec<_>>()
         .await;
 

@@ -241,6 +241,7 @@ pub async fn sync_one_init(
 /// Synchronize all rustup-init files.
 pub async fn sync_rustup_init(
     path: &Path,
+    threads: usize,
     source: &str,
     prefix: String,
     retries: usize,
@@ -307,7 +308,7 @@ pub async fn sync_rustup_init(
                 .await
             })
         })
-        .buffer_unordered(8)
+        .buffer_unordered(threads)
         .collect::<Vec<_>>()
         .await;
 
@@ -567,6 +568,7 @@ pub fn get_rustup_version(path: &Path) -> Result<String, SyncError> {
 pub async fn sync_rustup_channel(
     path: &Path,
     source: &str,
+    threads: usize,
     prefix: String,
     channel: &str,
     retries: usize,
@@ -622,7 +624,7 @@ pub async fn sync_rustup_channel(
                 sync_one_rustup_target(&path, &source, &url, &hash, retries, &user_agent).await
             })
         })
-        .buffer_unordered(8)
+        .buffer_unordered(threads)
         .collect::<Vec<_>>()
         .await;
 
@@ -680,6 +682,7 @@ pub async fn sync(
     let prefix = padded_prefix_message(step, num_steps, "Syncing rustup-init files");
     if let Err(e) = sync_rustup_init(
         path,
+        rustup.download_threads,
         &rustup.source,
         prefix,
         mirror.retries,
@@ -701,6 +704,7 @@ pub async fn sync(
         if let Err(e) = sync_rustup_channel(
             path,
             &rustup.source,
+            rustup.download_threads,
             prefix,
             "stable",
             mirror.retries,
@@ -730,6 +734,7 @@ pub async fn sync(
         if let Err(e) = sync_rustup_channel(
             path,
             &rustup.source,
+            rustup.download_threads,
             prefix,
             "beta",
             mirror.retries,
@@ -759,6 +764,7 @@ pub async fn sync(
         if let Err(e) = sync_rustup_channel(
             path,
             &rustup.source,
+            rustup.download_threads,
             prefix,
             "nightly",
             mirror.retries,
@@ -790,6 +796,7 @@ pub async fn sync(
             if let Err(e) = sync_rustup_channel(
                 path,
                 &rustup.source,
+                rustup.download_threads,
                 prefix,
                 &version,
                 mirror.retries,

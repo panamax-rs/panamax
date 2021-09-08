@@ -37,6 +37,7 @@ pub struct ConfigMirror {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ConfigRustup {
     pub sync: bool,
+    pub download_threads: usize,
     pub source: String,
     pub download_dev: Option<bool>,
     pub download_gz: Option<bool>,
@@ -52,6 +53,7 @@ pub struct ConfigRustup {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ConfigCrates {
     pub sync: bool,
+    pub download_threads: usize,
     pub source: String,
     pub source_index: String,
     pub use_new_crates_format: Option<bool>,

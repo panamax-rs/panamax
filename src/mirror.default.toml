@@ -37,6 +37,10 @@ download_xz = true
 download_gz = false
 
 
+# Number of downloads that can be ran in parallel.
+download_threads = 8
+
+
 # Where to download rustup files from.
 source = "https://static.rust-lang.org"
 
@@ -102,6 +106,10 @@ download_dev = true
 
 # Perform crates synchronization. Set this to false if you only want to mirror rustup.
 sync = true
+
+
+# Number of downloads that can be ran in parallel.
+download_threads = 8
 
 
 # Where to download the crates from.
