@@ -271,14 +271,17 @@ pub async fn serve(
     let socket_addr = SocketAddr::new(listen, port);
 
     match (cert_path, key_path) {
-        (Some(cert_path), Some(key_path)) => crate::serve::serve(
-            path,
-            socket_addr,
-            Some(TlsConfig {
-                cert_path,
-                key_path,
-            }),
-        ).await,
+        (Some(cert_path), Some(key_path)) => {
+            crate::serve::serve(
+                path,
+                socket_addr,
+                Some(TlsConfig {
+                    cert_path,
+                    key_path,
+                }),
+            )
+            .await
+        }
         (None, None) => crate::serve::serve(path, socket_addr, None).await,
         (Some(_), None) => {
             return Err(MirrorError::CmdLine(
