@@ -1,6 +1,9 @@
 # Panamax
 
 [![crates.io](https://img.shields.io/crates/v/panamax.svg)](https://crates.io/crates/panamax)
+![Docker Image Version (latest semver)](https://img.shields.io/docker/v/panamaxrs/panamax?label=docker&sort=semver)
+
+![image](https://user-images.githubusercontent.com/1247908/132435079-b703bd5d-c139-4a73-818f-51746353b3ea.png)
 
 Panamax is a tool to mirror the Rust and crates.io repositories, for offline usage of `rustup` and `cargo`.
 
