@@ -256,7 +256,7 @@ pub async fn sync_crates(
     eprintln!("{}", style("Syncing Crates repositories complete!").bold());
 }
 
-pub fn serve(
+pub async fn serve(
     path: PathBuf,
     listen: Option<IpAddr>,
     port: Option<u16>,
@@ -270,18 +270,16 @@ pub fn serve(
     let port = port.unwrap_or_else(|| if cert_path.is_some() { 8443 } else { 8080 });
     let socket_addr = SocketAddr::new(listen, port);
 
-    let rt = tokio::runtime::Runtime::new()?;
-
     match (cert_path, key_path) {
-        (Some(cert_path), Some(key_path)) => rt.block_on(crate::serve::serve(
+        (Some(cert_path), Some(key_path)) => crate::serve::serve(
             path,
             socket_addr,
             Some(TlsConfig {
                 cert_path,
                 key_path,
             }),
-        )),
-        (None, None) => rt.block_on(crate::serve::serve(path, socket_addr, None)),
+        ).await,
+        (None, None) => crate::serve::serve(path, socket_addr, None).await,
         (Some(_), None) => {
             return Err(MirrorError::CmdLine(
                 "cert_path set but key_path not set.".to_string(),

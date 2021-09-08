@@ -97,7 +97,7 @@ async fn main() {
             port,
             cert_path,
             key_path,
-        } => mirror::serve(path, listen, port, cert_path, key_path),
+        } => mirror::serve(path, listen, port, cert_path, key_path).await,
         Panamax::ListPlatforms { source, channel } => mirror::list_platforms(source, channel).await,
     }
     .unwrap_or_else(|e| eprintln!("Panamax command failed! {}", e));
