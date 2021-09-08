@@ -987,7 +987,7 @@ dependencies = [
 
 [[package]]
 name = "panamax"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "askama",
  "askama_warp",
