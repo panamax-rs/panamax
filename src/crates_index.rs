@@ -82,11 +82,6 @@ pub fn sync_crates_repo(mirror_path: &Path, crates: &ConfigCrates) -> Result<(),
         let repo = Repository::open(&repo_path)?;
         let mut remote = repo.find_remote("origin")?;
         remote.fetch(&["master"], Some(&mut fetch_opts), None)?;
-
-        // Set master to origin/master.
-        //
-        // Note that this means config.json changes will have to be rewritten on every sync.
-        fast_forward(&repo_path)?;
     }
 
     Ok(())
@@ -108,7 +103,7 @@ pub fn update_crates_config(
 
 /// Perform a git fast-forward on the repository. This will destroy any local changes that have
 /// been made to the repo, and will make the local master identical to the remote master.
-fn fast_forward(repo_path: &Path) -> Result<(), IndexSyncError> {
+pub fn fast_forward(repo_path: &Path) -> Result<(), IndexSyncError> {
     let repo = Repository::open(repo_path)?;
 
     let fetch_head = repo.find_reference("refs/remotes/origin/master")?;

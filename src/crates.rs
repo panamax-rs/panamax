@@ -1,3 +1,4 @@
+use crate::crates_index::{IndexSyncError, fast_forward};
 use crate::download::{download, DownloadError};
 use crate::mirror::{ConfigCrates, ConfigMirror};
 use crate::progress_bar::padded_prefix_message;
@@ -24,6 +25,8 @@ pub enum SyncError {
     SerializeError(#[from] serde_json::Error),
     #[error("Git error: {0}")]
     GitError(#[from] git2::Error),
+    #[error("Index syncing error: {0}")]
+    IndexSync(#[from] IndexSyncError),
 }
 /// One entry found in a crates.io-index file.
 /// These files are formatted as lines of JSON.
@@ -242,6 +245,11 @@ pub async fn sync_crates_files(
         // Try to remove the file, but ignore it if it doesn't exist
         let _ = fs::remove_file(repo_path.join(rc));
     }
+
+    // Set master to origin/master.
+    //
+    // Note that this means config.json changes will have to be rewritten on every sync.
+    fast_forward(&repo_path)?;
 
     Ok(())
 }
