@@ -49,8 +49,6 @@ There will now be a `my-mirror` directory in your current directory.
 
 Within the directory, you'll find a `mirror.toml` file. This file contains the full configuration of the mirror, and while it has sane defaults, you should ensure the values are set to what you want.
 
-**This is especially important for the contact information, which will help prevent you from getting your IP address banned from crates.io.**
-
 The other important parameter to set is the `base_url` within the `[crates]` section. After `cargo` fetches the index, it will try to use this URL to actually download the crates. It's important this value is accurate, or `cargo` may not work with the mirror.
 
 You can modify `mirror.toml` at any point in time, even after the mirror is synchronized.
