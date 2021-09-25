@@ -263,7 +263,16 @@ fn panamax_progress_bar(size: usize, prefix: String) -> ProgressBar {
 }
 
 
-async fn get_tasks(platforms: &Vec<String>, is_exe: bool, rustup_version: &String, path: &Path, source: &str, retries: usize, user_agent: &HeaderValue, threads: usize, pb: &ProgressBar) -> Vec<Result<Result<(), DownloadError>, JoinError>> {
+async fn create_sync_tasks(platforms: &Vec<String>,
+                           is_exe: bool,
+                           rustup_version: &String,
+                           path: &Path,
+                           source: &str,
+                           retries: usize,
+                           user_agent: &HeaderValue,
+                           threads: usize,
+                           pb: &ProgressBar) -> Vec<Result<Result<(), DownloadError>, JoinError>>
+{
     futures::stream::iter(platforms.iter()).map(|platform| {
         let rustup_version = rustup_version.clone();
         let path = path.to_path_buf();
@@ -326,7 +335,7 @@ pub async fn sync_rustup_init(
     let pb = panamax_progress_bar(platforms.len(), prefix);
     pb.enable_steady_tick(10);
 
-    let unix_tasks = get_tasks(
+    let unix_tasks = create_sync_tasks(
         &platforms.unix,
         false,
         &rustup_version,
@@ -338,7 +347,7 @@ pub async fn sync_rustup_init(
         &pb)
         .await;
 
-    let win_tasks = get_tasks(
+    let win_tasks = create_sync_tasks(
         &platforms.windows,
         true,
         &rustup_version,
