@@ -21,7 +21,7 @@
             },
             "args": [
                 "serve",
-                "/mirror"
+                "D:/rust"
             ],
             "cwd": "${workspaceFolder}"
         }
