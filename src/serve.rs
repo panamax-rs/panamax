@@ -126,8 +126,7 @@ pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<Tls
 
     // Handle git client requests to /git/crates.io-index
     let path_for_git = path.clone();
-    let git = warp::path("git")
-        .and(warp::path("crates.io-index"))
+    let git = warp::path("crates.io-index")
         .and(warp::path::tail())
         .and(warp::method())
         .and(warp::header::optional::<String>("Content-Type"))
@@ -223,13 +222,17 @@ async fn get_crate_file(
     let full_path =
         get_crate_path(&mirror_path, name, version).ok_or_else(warp::reject::not_found)?;
 
-    let file = File::open(full_path)
-        .await
-        .map_err(|_| warp::reject::not_found())?;
-    let meta = file
-        .metadata()
-        .await
-        .map_err(|_| warp::reject::not_found())?;
+    println!("Get crate {}-{} from {:?}", name, version, full_path);
+    let path_str = format!("{:?}", full_path);
+
+    let file = File::open(full_path).await.map_err(|e| {
+        println!("Error when open crate file {}. {:?}", path_str, e);
+        warp::reject::not_found()
+    })?;
+    let meta = file.metadata().await.map_err(|e| {
+        println!("Error when get crate file {} metadata . {:?}", path_str, e);
+        warp::reject::not_found()
+    })?;
     let stream = FramedRead::new(file, BytesCodec::new()).map_ok(BytesMut::freeze);
 
     let body = Body::wrap_stream(stream);
@@ -263,14 +266,23 @@ where
     let mut cmd = Command::new("git");
     cmd.arg("http-backend");
 
+    println!(
+        "get crates.io with {:?} {} {:?} {:?} {:?}",
+        path_tail, method, query, remote, content_type
+    );
+
+    let path_info = path_tail.as_str();
+    if path_info.is_empty() {
+        return Err(warp::reject::custom(ServeError::Other(
+            "No support access in Browser.".to_string(),
+        )));
+    }
+
     // Clear environment variables, and set needed variables
     // See: https://git-scm.com/docs/git-http-backend
     cmd.env_clear();
     cmd.env("GIT_PROJECT_ROOT", mirror_path);
-    cmd.env(
-        "PATH_INFO",
-        format!("/crates.io-index/{}", path_tail.as_str()),
-    );
+    cmd.env("PATH_INFO", format!("/crates.io-index/{}", path_info));
     cmd.env("REQUEST_METHOD", method.as_str());
     cmd.env("QUERY_STRING", query);
     cmd.env("REMOTE_USER", "");
@@ -278,6 +290,7 @@ where
     if let Some(content_type) = content_type {
         cmd.env("CONTENT_TYPE", content_type);
     }
+
     cmd.env("GIT_HTTP_EXPORT_ALL", "true");
     cmd.stderr(Stdio::inherit());
     cmd.stdout(Stdio::piped());
