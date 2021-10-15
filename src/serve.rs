@@ -59,21 +59,35 @@ impl Reject for ServeError {}
 
 pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<TlsConfig>) {
     let index_path = path.clone();
-    let is_tls = tls_paths.is_some();
 
     // Handle the homepage
     let index = warp::path::end().and(warp::host::optional()).and_then(
-        move |authority: Option<Authority>| {
+        move |_authority: Option<Authority>| {
+            let config_path = index_path.clone();
             let mirror_path = index_path.clone();
-            let protocol = if is_tls { "https://" } else { "http://" };
             async move {
+                if !config_path.join("mirror.toml").exists() {
+                    // eprintln!(
+                    //     "Mirror base not found! Run panamax init {:?} first.",
+                    //     config_path
+                    // );
+                }
+                let mirror = crate::mirror::load_mirror_toml(config_path.as_path()).unwrap();
+
+                let crates_config = match mirror.crates {
+                    Some(c) => c,
+                    None => panic!("Crates section missing in mirror.toml."),
+                };
+
+                let host = crates_config
+                    .base_url
+                    .unwrap_or_else(|| "http://panamax.internal".to_owned());
+
                 get_rustup_platforms(mirror_path)
                     .await
                     .map(|platforms| IndexTemplate {
                         platforms,
-                        host: authority
-                            .map(|a| format!("{}{}", protocol, a.as_str()))
-                            .unwrap_or_else(|| "http://panamax.internal".to_string()),
+                        host: host.clone(),
                     })
                     .map_err(|_| {
                         warp::reject::custom(ServeError::Other(
