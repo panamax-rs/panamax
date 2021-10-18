@@ -53,6 +53,7 @@ pub struct ConfigRustup {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ConfigCrates {
     pub sync: bool,
+    pub sync_crates: bool,
     pub download_threads: usize,
     pub source: String,
     pub source_index: String,
@@ -233,11 +234,17 @@ pub async fn sync_crates(
         return;
     }
 
-    if let Err(e) = crate::crates::sync_crates_files(path, mirror, crates, user_agent).await {
-        eprintln!("Downloading crates failed: {:?}", e);
-        eprintln!("You will need to sync again to finish this download.");
-        return;
+    if crates.sync_crates {
+        if let Err(e) = crate::crates::sync_crates_files(path, mirror, crates, user_agent).await {
+            eprintln!("Downloading crates failed: {:?}", e);
+            eprintln!("You will need to sync again to finish this download.");
+            return;
+        }
+    }else{
+        eprintln!("Crates files sync is disabled, skipping...");
     }
+
+    
 
     if let Err(e) = crate::crates_index::update_crates_config(path, crates) {
         eprintln!("Updating crates.io-index config failed: {:?}", e);

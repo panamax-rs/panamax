@@ -106,6 +106,9 @@ download_dev = false
 # Perform crates synchronization. Set this to false if you only want to mirror rustup.
 sync = true
 
+# Perform crates synchronization. Set this to false if you only want to mirror crates.io-index
+sync_crates = true
+
 
 # Number of downloads that can be ran in parallel.
 download_threads = 64
