@@ -13,6 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 use thiserror::Error;
+use tokio::task::JoinError;
 
 // The allowed platforms to validate the configuration
 // Note: These platforms should match the list on https://rust-lang.github.io/rustup/installation/other.html
@@ -163,6 +164,16 @@ pub struct Platforms {
     windows: Vec<String>,
 }
 
+impl Platforms {
+    pub fn contains(&self, platform: &String) -> bool {
+        self.unix.contains(platform) || self.windows.contains(platform)
+    }
+
+    pub fn len(&self) -> usize {
+        self.unix.len() + self.windows.len()
+    }
+}
+
 pub fn get_platforms(rustup: &ConfigRustup) -> Result<Platforms, MirrorError> {
     let unix = match &rustup.platforms_unix {
         Some(p) => {
@@ -238,6 +249,58 @@ pub async fn sync_one_init(
     Ok(())
 }
 
+fn panamax_progress_bar(size: usize, prefix: String) -> ProgressBar {
+    ProgressBar::new(size as u64)
+        .with_style(
+            ProgressStyle::default_bar()
+                .template(
+                    "{prefix} {wide_bar} {pos}/{len} [{elapsed_precise} / {duration_precise}]",
+                )
+                .progress_chars("█▉▊▋▌▍▎▏  ")
+                .on_finish(ProgressFinish::AndLeave),
+        )
+        .with_prefix(prefix)
+}
+
+
+async fn create_sync_tasks(platforms: &Vec<String>,
+                           is_exe: bool,
+                           rustup_version: &String,
+                           path: &Path,
+                           source: &str,
+                           retries: usize,
+                           user_agent: &HeaderValue,
+                           threads: usize,
+                           pb: &ProgressBar) -> Vec<Result<Result<(), DownloadError>, JoinError>>
+{
+    futures::stream::iter(platforms.iter()).map(|platform| {
+        let rustup_version = rustup_version.clone();
+        let path = path.to_path_buf();
+        let source = source.to_string();
+        let user_agent = user_agent.clone();
+        let platform = platform.clone();
+        let pb = pb.clone();
+
+        tokio::spawn(async move {
+            pb.inc(1);
+
+            sync_one_init(
+                &path,
+                &source,
+                platform.as_str(),
+                is_exe,
+                &rustup_version,
+                retries,
+                &user_agent,
+            )
+            .await
+        })
+    })
+    .buffer_unordered(threads)
+    .collect::<Vec<Result<_, _>>>()
+        .await
+}
+
 /// Synchronize all rustup-init files.
 pub async fn sync_rustup_init(
     path: &Path,
@@ -248,8 +311,6 @@ pub async fn sync_rustup_init(
     user_agent: &HeaderValue,
     platforms: &Platforms,
 ) -> Result<(), SyncError> {
-    let count = platforms.unix.len() + platforms.windows.len();
-
     let mut errors_occurred = 0usize;
 
     // Download rustup release file
@@ -271,48 +332,34 @@ pub async fn sync_rustup_init(
 
     move_if_exists(&release_part_path, &release_path)?;
 
-    let pb = ProgressBar::new(count as u64)
-        .with_style(
-            ProgressStyle::default_bar()
-                .template(
-                    "{prefix} {wide_bar} {pos}/{len} [{elapsed_precise} / {duration_precise}]",
-                )
-                .progress_chars("█▉▊▋▌▍▎▏  ")
-                .on_finish(ProgressFinish::AndLeave),
-        )
-        .with_prefix(prefix);
+    let pb = panamax_progress_bar(platforms.len(), prefix);
     pb.enable_steady_tick(10);
 
-    let tasks = futures::stream::iter(platforms.unix.iter().chain(platforms.windows.iter()))
-        .map(|platform| {
-            // Clone the variables that will be moved into the tokio task.
-            let rustup_version = rustup_version.clone();
-            let path = path.to_path_buf();
-            let source = source.to_string();
-            let user_agent = user_agent.clone();
-            let platform = platform.clone();
-            let pb = pb.clone();
-
-            tokio::spawn(async move {
-                pb.inc(1);
-
-                sync_one_init(
-                    &path,
-                    &source,
-                    platform.as_str(),
-                    false,
-                    &rustup_version,
-                    retries,
-                    &user_agent,
-                )
-                .await
-            })
-        })
-        .buffer_unordered(threads)
-        .collect::<Vec<_>>()
+    let unix_tasks = create_sync_tasks(
+        &platforms.unix,
+        false,
+        &rustup_version,
+        path,
+        source,
+        retries,
+        user_agent,
+        threads,
+        &pb)
         .await;
 
-    for res in tasks {
+    let win_tasks = create_sync_tasks(
+        &platforms.windows,
+        true,
+        &rustup_version,
+        path,
+        source,
+        retries,
+        user_agent,
+        threads,
+        &pb)
+        .await;
+
+    for res in unix_tasks.into_iter().chain(win_tasks) {
         // Unwrap the join result.
         let res = res.unwrap();
 
@@ -356,11 +403,9 @@ pub fn rustup_download_list(
             .flat_map(|(_, pkg)| {
                 pkg.target
                     .into_iter()
-                    .filter(|(name, _)| {
-                        platforms.unix.contains(name)
-                            || platforms.windows.contains(name)
-                            || name == "*" // The * platform contains rust-src, always download
-                    })
+                    .filter(|(name, _)|
+                        platforms.contains(name) || name == "*" // The * platform contains rust-src, always download
+                    )
                     .flat_map(|(_, target)| -> Vec<(String, String)> {
                         target
                             .target_urls
@@ -506,16 +551,7 @@ pub fn clean_old_files(
     }
 
     // Progress bar!
-    let pb = ProgressBar::new(files_to_delete.len() as u64)
-        .with_style(
-            ProgressStyle::default_bar()
-                .template(
-                    "{prefix} {wide_bar} {pos}/{len} [{elapsed_precise} / {duration_precise}]",
-                )
-                .progress_chars("█▉▊▋▌▍▎▏  ")
-                .on_finish(ProgressFinish::AndLeave),
-        )
-        .with_prefix(prefix);
+    let pb = panamax_progress_bar(files_to_delete.len(), prefix);
 
     for f in files_to_delete {
         if let Err(e) = fs::remove_file(path.join(&f)) {
@@ -614,16 +650,7 @@ pub async fn sync_rustup_channel(
     )?;
     move_if_exists_with_sha256(&channel_part_path, &channel_path)?;
 
-    let pb = ProgressBar::new((files.len()) as u64)
-        .with_style(
-            ProgressStyle::default_bar()
-                .template(
-                    "{prefix} {wide_bar} {pos}/{len} [{elapsed_precise} / {duration_precise}]",
-                )
-                .progress_chars("█▉▊▋▌▍▎▏  ")
-                .on_finish(ProgressFinish::AndLeave),
-        )
-        .with_prefix(prefix);
+    let pb = panamax_progress_bar(files.len(), prefix);
     pb.enable_steady_tick(10);
 
     let mut errors_occurred = 0usize;
