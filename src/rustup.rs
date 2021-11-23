@@ -165,6 +165,11 @@ pub struct Platforms {
 }
 
 impl Platforms {
+    // &String instead of &str is required due to vec.contains not performing proper inference
+    // here. See:
+    // https://stackoverflow.com/questions/48985924/why-does-a-str-not-coerce-to-a-string-when-using-veccontains
+    // https://github.com/rust-lang/rust/issues/42671
+    #[allow(clippy::ptr_arg)]
     pub fn contains(&self, platform: &String) -> bool {
         self.unix.contains(platform) || self.windows.contains(platform)
     }
@@ -262,10 +267,11 @@ fn panamax_progress_bar(size: usize, prefix: String) -> ProgressBar {
         .with_prefix(prefix)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn create_sync_tasks(
-    platforms: &Vec<String>,
+    platforms: &[String],
     is_exe: bool,
-    rustup_version: &String,
+    rustup_version: &str,
     path: &Path,
     source: &str,
     retries: usize,
@@ -275,7 +281,7 @@ async fn create_sync_tasks(
 ) -> Vec<Result<Result<(), DownloadError>, JoinError>> {
     futures::stream::iter(platforms.iter())
         .map(|platform| {
-            let rustup_version = rustup_version.clone();
+            let rustup_version = rustup_version.to_string();
             let path = path.to_path_buf();
             let source = source.to_string();
             let user_agent = user_agent.clone();
