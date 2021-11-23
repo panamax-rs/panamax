@@ -108,21 +108,52 @@ pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<Tls
         },
     );
 
-    // Handle crates requests in the format of "/crates/ripgrep/ripgrep-0.1.0.crate"
-    // This format is used by Panamax, and/or is used if config.json contains "/crates/{crate}/{crate}-{version}.crate"
+    // Handle crates requests in the format of either :
+    // - "/crates/1/u/0.2.0/u-0.2.0.crate"
+    // - "/crates/2/bm/0.11.0/bm-0.11.0.crate"
+    // - "/crates/3/c/cde/0.1.1/cde-0.1.1.crate"
+    // - "/crates/se/rd/serde/1.0.130/serde-1.0.130.crate"
+    // This format is used by Panamax, and/or is used if config.json contains "/crates/{prefix}/{crate}/{version}/{crate}-{version}.crate"
     let crates_mirror_path_2 = path.clone();
-    let crates_dir_condensed_format = warp::path!("crates" / String / String).and_then(
-        move |name: String, crate_file: String| {
+    let crates_dir_condensed_format_1 = warp::path!("crates" / "1" / String / String / String)
+        .map(|name: String, version: String, crate_file: String| (name, version, crate_file))
+        .untuple_one();
+    let crates_dir_condensed_format_2 = warp::path!("crates" / "2" / String / String / String)
+        .map(|name: String, version: String, crate_file: String| (name, version, crate_file))
+        .untuple_one();
+    let crates_dir_condensed_format_3 =
+        warp::path!("crates" / "3" / String / String / String / String)
+            .map(
+                |_: String, name: String, version: String, crate_file: String| {
+                    (name, version, crate_file)
+                },
+            )
+            .untuple_one();
+    let crates_dir_condensed_format_full =
+        warp::path!("crates" / String / String / String / String / String)
+            .map(
+                |_: String, _: String, name: String, version: String, crate_file: String| {
+                    (name, version, crate_file)
+                },
+            )
+            .untuple_one();
+
+    let crates_dir_condensed_format = crates_dir_condensed_format_1
+        .or(crates_dir_condensed_format_2)
+        .unify()
+        .or(crates_dir_condensed_format_3)
+        .unify()
+        .or(crates_dir_condensed_format_full)
+        .unify()
+        .and_then(move |name: String, version: String, crate_file: String| {
             let mirror_path = crates_mirror_path_2.clone();
             async move {
                 if !crate_file.ends_with(".crate") || !crate_file.starts_with(&name) {
                     return Err(warp::reject::not_found());
                 }
-                let version = &crate_file[name.len() + 1..crate_file.len() - 6];
-                get_crate_file(mirror_path, &name, version).await
+                get_crate_file(mirror_path, &name, &version).await
             }
-        },
-    );
+        });
 
     // Handle git client requests to /git/crates.io-index
     let path_for_git = path.clone();

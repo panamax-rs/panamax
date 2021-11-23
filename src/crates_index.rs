@@ -154,7 +154,10 @@ pub fn rewrite_config_json(repo_path: &Path, base_url: &str) -> Result<(), Index
 
     let mut index = repo.index()?;
 
-    let crate_path = format!("{}/{}", base_url, "{crate}/{crate}-{version}.crate");
+    let crate_path = format!(
+        "{}/{}",
+        base_url, "{prefix}/{crate}/{version}/{crate}-{version}.crate"
+    );
 
     // Create the new config.json.
     let config_json = ConfigJson {
