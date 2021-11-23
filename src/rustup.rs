@@ -262,42 +262,43 @@ fn panamax_progress_bar(size: usize, prefix: String) -> ProgressBar {
         .with_prefix(prefix)
 }
 
+async fn create_sync_tasks(
+    platforms: &Vec<String>,
+    is_exe: bool,
+    rustup_version: &String,
+    path: &Path,
+    source: &str,
+    retries: usize,
+    user_agent: &HeaderValue,
+    threads: usize,
+    pb: &ProgressBar,
+) -> Vec<Result<Result<(), DownloadError>, JoinError>> {
+    futures::stream::iter(platforms.iter())
+        .map(|platform| {
+            let rustup_version = rustup_version.clone();
+            let path = path.to_path_buf();
+            let source = source.to_string();
+            let user_agent = user_agent.clone();
+            let platform = platform.clone();
+            let pb = pb.clone();
 
-async fn create_sync_tasks(platforms: &Vec<String>,
-                           is_exe: bool,
-                           rustup_version: &String,
-                           path: &Path,
-                           source: &str,
-                           retries: usize,
-                           user_agent: &HeaderValue,
-                           threads: usize,
-                           pb: &ProgressBar) -> Vec<Result<Result<(), DownloadError>, JoinError>>
-{
-    futures::stream::iter(platforms.iter()).map(|platform| {
-        let rustup_version = rustup_version.clone();
-        let path = path.to_path_buf();
-        let source = source.to_string();
-        let user_agent = user_agent.clone();
-        let platform = platform.clone();
-        let pb = pb.clone();
+            tokio::spawn(async move {
+                pb.inc(1);
 
-        tokio::spawn(async move {
-            pb.inc(1);
-
-            sync_one_init(
-                &path,
-                &source,
-                platform.as_str(),
-                is_exe,
-                &rustup_version,
-                retries,
-                &user_agent,
-            )
-            .await
+                sync_one_init(
+                    &path,
+                    &source,
+                    platform.as_str(),
+                    is_exe,
+                    &rustup_version,
+                    retries,
+                    &user_agent,
+                )
+                .await
+            })
         })
-    })
-    .buffer_unordered(threads)
-    .collect::<Vec<Result<_, _>>>()
+        .buffer_unordered(threads)
+        .collect::<Vec<Result<_, _>>>()
         .await
 }
 
@@ -344,8 +345,9 @@ pub async fn sync_rustup_init(
         retries,
         user_agent,
         threads,
-        &pb)
-        .await;
+        &pb,
+    )
+    .await;
 
     let win_tasks = create_sync_tasks(
         &platforms.windows,
@@ -356,8 +358,9 @@ pub async fn sync_rustup_init(
         retries,
         user_agent,
         threads,
-        &pb)
-        .await;
+        &pb,
+    )
+    .await;
 
     for res in unix_tasks.into_iter().chain(win_tasks) {
         // Unwrap the join result.
@@ -403,8 +406,8 @@ pub fn rustup_download_list(
             .flat_map(|(_, pkg)| {
                 pkg.target
                     .into_iter()
-                    .filter(|(name, _)|
-                        platforms.contains(name) || name == "*" // The * platform contains rust-src, always download
+                    .filter(
+                        |(name, _)| platforms.contains(name) || name == "*", // The * platform contains rust-src, always download
                     )
                     .flat_map(|(_, target)| -> Vec<(String, String)> {
                         target
