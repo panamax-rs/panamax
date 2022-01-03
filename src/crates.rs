@@ -138,6 +138,9 @@ pub async fn sync_crates_files(
             if p == Path::new("config.json") {
                 return true;
             }
+            if p.starts_with(".github/") {
+                return true;
+            }
 
             // DEV: if dev_reduced_crates is enabled, only download crates that start with z
             #[cfg(feature = "dev_reduced_crates")]
@@ -167,7 +170,12 @@ pub async fn sync_crates_files(
             // Download one crate for each of the versions in the crate file
             for line in Cursor::new(data).lines() {
                 let line = line.unwrap();
-                let c: CrateEntry = serde_json::from_str(&line).unwrap();
+                let c: CrateEntry = match serde_json::from_str(&line) {
+                    Ok(c) => c,
+                    Err(_) => {
+                        continue;
+                    }
+                };
 
                 changed_crates.push(c);
             }
