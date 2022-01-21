@@ -13,6 +13,7 @@ use crate::crates_index::rewrite_config_json;
 use crate::download::download_string;
 use crate::rustup::Channel;
 use crate::serve::TlsConfig;
+use crate::verify::{self, VerifyError};
 
 #[derive(Error, Debug)]
 pub enum MirrorError {
@@ -317,6 +318,43 @@ pub(crate) async fn list_platforms(source: String, channel: String) -> Result<()
     );
     for t in targets {
         println!("  {}", t);
+    }
+
+    Ok(())
+}
+
+/// Verify coherence between local mirror and local crates.io-index.
+pub(crate) async fn verify(path: PathBuf) -> Result<(), MirrorError> {
+    if !path.join("mirror.toml").exists() {
+        eprintln!(
+            "Mirror base not found! Run panamax init {} first.",
+            path.display()
+        );
+        return Ok(());
+    }
+    let mirror = load_mirror_toml(&path)?;
+
+    // Fail if use_new_crates_format is not true, and old format is detected.
+    // If use_new_crates_format is true and new format is detected, warn the user.
+    // If use_new_crates_format is true, ignore the format and assume it's new.
+    if let Some(crates) = &mirror.crates {
+        if crates.sync && !is_new_crates_format(&path.join("crates"))? {
+            eprintln!("Your crates directory is using the old 0.2 format, however");
+            eprintln!("Panamax 0.3+ has deprecated this format for a new one.");
+            eprintln!("Please delete crates/ from your mirror directory to continue.");
+            return Ok(());
+        }
+    }
+
+    eprintln!("{}", style("Verifying mirror state...").bold());
+
+    if let Err(e) = verify::verify_mirror(path).await {
+        match e {
+            VerifyError::MissingCrates(vec) => vec.iter().for_each(|c| {
+                eprintln!("Missing crate: {} - version {}", c.get_name(), c.get_vers());
+            }),
+            VerifyError::GitError(e) => eprintln!("Git Error: {e}"),
+        }
     }
 
     Ok(())

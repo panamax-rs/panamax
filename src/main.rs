@@ -8,6 +8,7 @@ mod mirror;
 mod progress_bar;
 mod rustup;
 mod serve;
+mod verify;
 
 /// Mirror rustup and crates.io repositories, for offline Rust and cargo usage.
 #[derive(Debug, StructOpt)]
@@ -81,6 +82,14 @@ enum Panamax {
         #[structopt(long, default_value = "nightly")]
         channel: String,
     },
+
+    /// Verify coherence between local mirror and local crates.io-index.
+    #[structopt(name = "verify", alias = "check")]
+    Verify {
+        /// Mirror directory.
+        #[structopt(parse(from_os_str))]
+        path: PathBuf,
+    },
 }
 
 #[tokio::main]
@@ -99,6 +108,7 @@ async fn main() {
             key_path,
         } => mirror::serve(path, listen, port, cert_path, key_path).await,
         Panamax::ListPlatforms { source, channel } => mirror::list_platforms(source, channel).await,
+        Panamax::Verify { path } => mirror::verify(path).await,
     }
     .unwrap_or_else(|e| eprintln!("Panamax command failed! {}", e));
 }
