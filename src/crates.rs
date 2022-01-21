@@ -35,7 +35,17 @@ pub struct CrateEntry {
     name: String,
     vers: String,
     cksum: String,
-    yanked: bool,
+    pub(crate) yanked: bool,
+}
+
+impl CrateEntry {
+    pub(crate) fn get_name(&self) -> &str {
+        self.name.as_str()
+    }
+
+    pub(crate) fn get_vers(&self) -> &str {
+        self.vers.as_str()
+    }
 }
 
 /// Download one single crate file.
