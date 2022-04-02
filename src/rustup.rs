@@ -181,35 +181,11 @@ impl Platforms {
 
 pub fn get_platforms(rustup: &ConfigRustup) -> Result<Platforms, MirrorError> {
     let unix = match &rustup.platforms_unix {
-        Some(p) => {
-            let bad_platforms: Vec<&String> = p
-                .iter()
-                .filter(|x| !PLATFORMS_UNIX.contains(&x.as_str()))
-                .collect();
-            if !bad_platforms.is_empty() {
-                eprintln!("Bad values in unix platforms: {:?}", bad_platforms);
-                return Err(MirrorError::Config(
-                    "bad value for 'platforms_unix'".to_string(),
-                ));
-            }
-            p.clone()
-        }
+        Some(p) => p.clone(),
         None => PLATFORMS_UNIX.iter().map(|x| x.to_string()).collect(),
     };
     let windows = match &rustup.platforms_windows {
-        Some(p) => {
-            let bad_platforms: Vec<&String> = p
-                .iter()
-                .filter(|x| !PLATFORMS_WINDOWS.contains(&x.as_str()))
-                .collect();
-            if !bad_platforms.is_empty() {
-                eprintln!("Bad values in windows platforms: {:?}", bad_platforms);
-                return Err(MirrorError::Config(
-                    "bad value for 'platforms_windows'".to_string(),
-                ));
-            }
-            p.clone()
-        }
+        Some(p) => p.clone(),
         None => PLATFORMS_WINDOWS.iter().map(|x| x.to_string()).collect(),
     };
     Ok(Platforms { unix, windows })
@@ -290,9 +266,7 @@ async fn create_sync_tasks(
             let pb = pb.clone();
 
             tokio::spawn(async move {
-                pb.inc(1);
-
-                sync_one_init(
+                let out = sync_one_init(
                     &path,
                     &source,
                     platform.as_str(),
@@ -301,7 +275,11 @@ async fn create_sync_tasks(
                     retries,
                     &user_agent,
                 )
-                .await
+                .await;
+
+                pb.inc(1);
+
+                out
             })
         })
         .buffer_unordered(threads)
@@ -676,9 +654,12 @@ pub async fn sync_rustup_channel(
             let pb = pb.clone();
 
             tokio::spawn(async move {
+                let out =
+                    sync_one_rustup_target(&path, &source, &url, &hash, retries, &user_agent).await;
+
                 pb.inc(1);
 
-                sync_one_rustup_target(&path, &source, &url, &hash, retries, &user_agent).await
+                out
             })
         })
         .buffer_unordered(threads)

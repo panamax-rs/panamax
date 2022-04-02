@@ -105,18 +105,11 @@ pub async fn sync_crates_files(
     let origin_master = repo.find_reference("refs/remotes/origin/master")?;
     let origin_master_tree = origin_master.peel_to_tree()?;
 
-    let master = repo.find_reference("refs/heads/master")?;
-    let master_tree = master.peel_to_tree()?;
-
-    // Perform a full scan if master and origin/master match
-    let do_full_scan = origin_master.peel_to_commit()?.id() == master.peel_to_commit()?.id();
+    let master = repo.find_reference("refs/heads/master").ok();
+    let master_tree = master.as_ref().and_then(|m| m.peel_to_tree().ok());
 
     // Diff between master and origin/master (i.e. everything since the last fetch)
-    let diff = if do_full_scan {
-        repo.diff_tree_to_tree(None, Some(&origin_master_tree), None)?
-    } else {
-        repo.diff_tree_to_tree(Some(&master_tree), Some(&origin_master_tree), None)?
-    };
+    let diff = repo.diff_tree_to_tree(master_tree.as_ref(), Some(&origin_master_tree), None)?;
 
     let mut changed_crates = Vec::new();
     let mut removed_crates = Vec::new();
@@ -214,16 +207,18 @@ pub async fn sync_crates_files(
             let pb = pb.clone();
 
             tokio::spawn(async move {
-                pb.inc(1);
-
-                sync_one_crate_entry(
+                let out = sync_one_crate_entry(
                     &path,
                     crates_source.as_deref(),
                     mirror_retries,
                     &c,
                     &user_agent,
                 )
-                .await
+                .await;
+
+                pb.inc(1);
+
+                out
             })
         })
         .buffer_unordered(crates.download_threads)
