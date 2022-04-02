@@ -12,7 +12,7 @@ Panamax is a tool to mirror the Rust and crates.io repositories, for offline usa
 Panamax is itself available on crates.io, and can be installed via:
 
 ```
-$ cargo install panamax
+$ cargo install --locked panamax
 ```
 
 Alternatively, you can clone this repository and `cargo build` or `cargo run` within it.
