@@ -201,7 +201,7 @@ pub fn rewrite(path: &Path, base_url: Option<String>) -> Result<(), MirrorError>
     let mirror = load_mirror_toml(path)?;
 
     if let Some(crates) = mirror.crates {
-        if let Some(base_url) = base_url.as_deref().or_else(|| crates.base_url.as_deref()) {
+        if let Some(base_url) = base_url.as_deref().or(crates.base_url.as_deref()) {
             if let Err(e) = rewrite_config_json(&path.join("crates.io-index"), base_url) {
                 eprintln!("Updating crates.io-index config failed: {:?}", e);
             }
