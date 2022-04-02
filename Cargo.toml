@@ -11,7 +11,7 @@ edition = "2018"
 
 [dependencies]
 reqwest = { version = "0.11.4", features = ["blocking"] }
-indicatif = "0.17.0-beta.1"
+indicatif = "0.17.0-rc.10"
 structopt = "0.3.23"
 toml = "0.5.8"
 serde = { version = "1.0.130", features = ["derive"] }
@@ -31,7 +31,7 @@ askama_warp = "0.11.0"
 include_dir = "0.6.2"
 bytes = "1.1.0"
 tokio-stream = "0.1.7"
-tokio-util = "0.6.8"
+tokio-util = { version = "0.6.8", features = ["codec"] }
 futures-util = "0.3.17"
 futures = "0.3.17"
 

@@ -9,6 +9,7 @@ use reqwest::header::HeaderValue;
 use serde::{Deserialize, Serialize};
 use std::fs::read_dir;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use std::{
     fs,
     io::{self, BufRead, Cursor},
@@ -124,11 +125,12 @@ pub async fn sync_crates_files(
         .with_style(
             ProgressStyle::default_bar()
                 .template("{prefix} {wide_bar} {spinner} [{elapsed_precise}]")
-                .progress_chars("  ")
-                .on_finish(ProgressFinish::AndLeave),
+                .expect("template is correct")
+                .progress_chars("  "),
         )
+        .with_finish(ProgressFinish::AndLeave)
         .with_prefix(prefix.clone());
-    pb.enable_steady_tick(10);
+    pb.enable_steady_tick(Duration::from_millis(10));
 
     // Figure out which crates we need to update/remove.
     diff.foreach(
@@ -195,12 +197,12 @@ pub async fn sync_crates_files(
                 .template(
                     "{prefix} {wide_bar} {pos}/{len} [{elapsed_precise} / {duration_precise}]",
                 )
-                .progress_chars("█▉▊▋▌▍▎▏  ")
-                .on_finish(ProgressFinish::AndLeave),
+                .expect("template is correct")
+                .progress_chars("█▉▊▋▌▍▎▏  "),
         )
+        .with_finish(ProgressFinish::AndLeave)
         .with_prefix(prefix);
-    pb.enable_steady_tick(10);
-    pb.set_draw_rate(10);
+    pb.enable_steady_tick(Duration::from_millis(10));
 
     let tasks = futures::stream::iter(changed_crates.into_iter())
         .map(|c| {

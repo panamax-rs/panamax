@@ -11,6 +11,7 @@ use reqwest::header::HeaderValue;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use std::{fs, io};
 use thiserror::Error;
 use tokio::task::JoinError;
@@ -105,6 +106,7 @@ static PLATFORMS_WINDOWS: &[&str] = &[
     "x86_64-pc-windows-gnu",
     "x86_64-pc-windows-msvc",
 ];
+
 #[derive(Error, Debug)]
 pub enum SyncError {
     #[error("IO error: {0}")]
@@ -153,8 +155,6 @@ pub struct Channel {
 
 #[derive(Deserialize, Debug)]
 struct Release {
-    #[serde(alias = "schema-version")]
-    schema_version: String,
     version: String,
 }
 
@@ -261,9 +261,10 @@ fn panamax_progress_bar(size: usize, prefix: String) -> ProgressBar {
                 .template(
                     "{prefix} {wide_bar} {pos}/{len} [{elapsed_precise} / {duration_precise}]",
                 )
-                .progress_chars("█▉▊▋▌▍▎▏  ")
-                .on_finish(ProgressFinish::AndLeave),
+                .expect("template is correct")
+                .progress_chars("█▉▊▋▌▍▎▏  "),
         )
+        .with_finish(ProgressFinish::AndLeave)
         .with_prefix(prefix)
 }
 
@@ -340,7 +341,7 @@ pub async fn sync_rustup_init(
     move_if_exists(&release_part_path, &release_path)?;
 
     let pb = panamax_progress_bar(platforms.len(), prefix);
-    pb.enable_steady_tick(10);
+    pb.enable_steady_tick(Duration::from_millis(10));
 
     let unix_tasks = create_sync_tasks(
         &platforms.unix,
@@ -660,7 +661,7 @@ pub async fn sync_rustup_channel(
     move_if_exists_with_sha256(&channel_part_path, &channel_path)?;
 
     let pb = panamax_progress_bar(files.len(), prefix);
-    pb.enable_steady_tick(10);
+    pb.enable_steady_tick(Duration::from_millis(10));
 
     let mut errors_occurred = 0usize;
 
