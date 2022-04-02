@@ -11,8 +11,12 @@ RUN cargo build --release $CARGO_BUILD_EXTRA
 FROM debian:latest
 
 COPY --from=builder /app/target/release/panamax /usr/local/bin
-RUN apt update
-RUN apt install -y libssl1.1 ca-certificates
+
+RUN apt update \
+  && apt install -y \
+    ca-certificates \
+    git \
+    libssl1.1
 
 ENTRYPOINT [ "/usr/local/bin/panamax" ]
 CMD ["--help"]
