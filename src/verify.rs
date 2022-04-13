@@ -1,6 +1,7 @@
 use std::{
     io::{BufRead, Cursor},
     path::Path,
+    time::Duration,
 };
 
 use console::style;
@@ -72,11 +73,12 @@ pub(crate) async fn verify_mirror(path: std::path::PathBuf) -> Result<(), Verify
         .with_style(
             ProgressStyle::default_bar()
                 .template("{prefix} {wide_bar} {spinner} [{elapsed_precise}]")
-                .progress_chars("  ")
-                .on_finish(ProgressFinish::AndLeave),
+                .expect("Something went wrong with the template.")
+                .progress_chars("  "),
         )
-        .with_prefix(prefix);
-    pb.enable_steady_tick(10);
+        .with_prefix(prefix)
+        .with_finish(ProgressFinish::AndLeave);
+    pb.enable_steady_tick(Duration::from_millis(10));
 
     diff.foreach(
         &mut |delta, _| {
