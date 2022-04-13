@@ -1,6 +1,6 @@
 use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
 use serde::Serialize;
-use std::{io, num::TryFromIntError, path::Path};
+use std::{io, num::TryFromIntError, path::Path, time::Duration};
 
 use git2::{
     build::{CheckoutBuilder, RepoBuilder},
@@ -42,13 +42,14 @@ pub fn sync_crates_repo(mirror_path: &Path, crates: &ConfigCrates) -> Result<(),
         .with_style(
             ProgressStyle::default_bar()
                 .template("{prefix} {wide_bar} {spinner} [{elapsed_precise}]")
-                .progress_chars("  ")
-                .on_finish(ProgressFinish::AndLeave),
+                .expect("template is correct")
+                .progress_chars("  "),
         )
+        .with_finish(ProgressFinish::AndLeave)
         .with_prefix(prefix);
     // Enable the steady tick, so the transfer progress callback isn't spending its time
     // updating the progress bar.
-    pb.enable_steady_tick(10);
+    pb.enable_steady_tick(Duration::from_millis(10));
 
     // Libgit2 has callbacks that allow us to update the progress bar
     // as the git download progresses.
@@ -76,7 +77,10 @@ pub fn sync_crates_repo(mirror_path: &Path, crates: &ConfigCrates) -> Result<(),
     fetch_opts.proxy_options(proxy_opts);
 
     if !repo_path.join(".git").exists() {
-        clone_repository(fetch_opts, &crates.source_index, &repo_path)?
+        clone_repository(fetch_opts, &crates.source_index, &repo_path)?;
+        // Remove master in order to ensure full scan is performed
+        let repo = Repository::open(&repo_path)?;
+        repo.find_reference("refs/heads/master")?.delete()?;
     } else {
         // Get (fetch) the branch's latest remote "master" commit
         let repo = Repository::open(&repo_path)?;

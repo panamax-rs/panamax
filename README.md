@@ -12,7 +12,7 @@ Panamax is a tool to mirror the Rust and crates.io repositories, for offline usa
 Panamax is itself available on crates.io, and can be installed via:
 
 ```
-$ cargo install panamax
+$ cargo install --locked panamax
 ```
 
 Alternatively, you can clone this repository and `cargo build` or `cargo run` within it.
@@ -24,11 +24,11 @@ Alternatively, you can clone this repository and `cargo build` or `cargo run` wi
 Panamax is available as a docker image, so you can run:
 
 ```
-$ docker run -it -v /path/to/mirror/:/mirror panamaxrs/panamax init /mirror
+$ docker run --rm -it -v /path/to/mirror/:/mirror panamaxrs/panamax init /mirror
 (Modify /path/to/mirror/mirror.toml as needed)
-$ docker run -it -v /path/to/mirror/:/mirror panamaxrs/panamax sync /mirror
+$ docker run --rm -it -v /path/to/mirror/:/mirror panamaxrs/panamax sync /mirror
 (Once synced, serve the mirror)
-$ docker run -it -v /path/to/mirror/:/mirror -p8080:8080 panamaxrs/panamax serve /mirror
+$ docker run --rm -it -v /path/to/mirror/:/mirror -p8080:8080 panamaxrs/panamax serve /mirror
 ```
 
 Alternatively, you can run panamax in a bare-metal environment like below.

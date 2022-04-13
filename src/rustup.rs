@@ -11,6 +11,7 @@ use reqwest::header::HeaderValue;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use std::{fs, io};
 use thiserror::Error;
 use tokio::task::JoinError;
@@ -105,6 +106,7 @@ static PLATFORMS_WINDOWS: &[&str] = &[
     "x86_64-pc-windows-gnu",
     "x86_64-pc-windows-msvc",
 ];
+
 #[derive(Error, Debug)]
 pub enum SyncError {
     #[error("IO error: {0}")]
@@ -153,8 +155,6 @@ pub struct Channel {
 
 #[derive(Deserialize, Debug)]
 struct Release {
-    #[serde(alias = "schema-version")]
-    schema_version: String,
     version: String,
 }
 
@@ -181,35 +181,11 @@ impl Platforms {
 
 pub fn get_platforms(rustup: &ConfigRustup) -> Result<Platforms, MirrorError> {
     let unix = match &rustup.platforms_unix {
-        Some(p) => {
-            let bad_platforms: Vec<&String> = p
-                .iter()
-                .filter(|x| !PLATFORMS_UNIX.contains(&x.as_str()))
-                .collect();
-            if !bad_platforms.is_empty() {
-                eprintln!("Bad values in unix platforms: {:?}", bad_platforms);
-                return Err(MirrorError::Config(
-                    "bad value for 'platforms_unix'".to_string(),
-                ));
-            }
-            p.clone()
-        }
+        Some(p) => p.clone(),
         None => PLATFORMS_UNIX.iter().map(|x| x.to_string()).collect(),
     };
     let windows = match &rustup.platforms_windows {
-        Some(p) => {
-            let bad_platforms: Vec<&String> = p
-                .iter()
-                .filter(|x| !PLATFORMS_WINDOWS.contains(&x.as_str()))
-                .collect();
-            if !bad_platforms.is_empty() {
-                eprintln!("Bad values in windows platforms: {:?}", bad_platforms);
-                return Err(MirrorError::Config(
-                    "bad value for 'platforms_windows'".to_string(),
-                ));
-            }
-            p.clone()
-        }
+        Some(p) => p.clone(),
         None => PLATFORMS_WINDOWS.iter().map(|x| x.to_string()).collect(),
     };
     Ok(Platforms { unix, windows })
@@ -261,9 +237,10 @@ fn panamax_progress_bar(size: usize, prefix: String) -> ProgressBar {
                 .template(
                     "{prefix} {wide_bar} {pos}/{len} [{elapsed_precise} / {duration_precise}]",
                 )
-                .progress_chars("█▉▊▋▌▍▎▏  ")
-                .on_finish(ProgressFinish::AndLeave),
+                .expect("template is correct")
+                .progress_chars("█▉▊▋▌▍▎▏  "),
         )
+        .with_finish(ProgressFinish::AndLeave)
         .with_prefix(prefix)
 }
 
@@ -289,9 +266,7 @@ async fn create_sync_tasks(
             let pb = pb.clone();
 
             tokio::spawn(async move {
-                pb.inc(1);
-
-                sync_one_init(
+                let out = sync_one_init(
                     &path,
                     &source,
                     platform.as_str(),
@@ -300,7 +275,11 @@ async fn create_sync_tasks(
                     retries,
                     &user_agent,
                 )
-                .await
+                .await;
+
+                pb.inc(1);
+
+                out
             })
         })
         .buffer_unordered(threads)
@@ -340,7 +319,7 @@ pub async fn sync_rustup_init(
     move_if_exists(&release_part_path, &release_path)?;
 
     let pb = panamax_progress_bar(platforms.len(), prefix);
-    pb.enable_steady_tick(10);
+    pb.enable_steady_tick(Duration::from_millis(10));
 
     let unix_tasks = create_sync_tasks(
         &platforms.unix,
@@ -660,7 +639,7 @@ pub async fn sync_rustup_channel(
     move_if_exists_with_sha256(&channel_part_path, &channel_path)?;
 
     let pb = panamax_progress_bar(files.len(), prefix);
-    pb.enable_steady_tick(10);
+    pb.enable_steady_tick(Duration::from_millis(10));
 
     let mut errors_occurred = 0usize;
 
@@ -675,9 +654,12 @@ pub async fn sync_rustup_channel(
             let pb = pb.clone();
 
             tokio::spawn(async move {
+                let out =
+                    sync_one_rustup_target(&path, &source, &url, &hash, retries, &user_agent).await;
+
                 pb.inc(1);
 
-                sync_one_rustup_target(&path, &source, &url, &hash, retries, &user_agent).await
+                out
             })
         })
         .buffer_unordered(threads)
