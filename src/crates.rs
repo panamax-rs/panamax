@@ -36,7 +36,7 @@ pub struct CrateEntry {
     name: String,
     vers: String,
     cksum: String,
-    pub(crate) yanked: bool,
+    yanked: bool,
 }
 
 impl CrateEntry {
@@ -46,6 +46,10 @@ impl CrateEntry {
 
     pub(crate) fn get_vers(&self) -> &str {
         self.vers.as_str()
+    }
+
+    pub(crate) fn get_yanked(&self) -> bool {
+        self.yanked
     }
 }
 

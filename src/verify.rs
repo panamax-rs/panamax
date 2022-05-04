@@ -17,7 +17,7 @@ use crate::{
 ///
 /// This variable is here to avoid to have false positive regarding crates.io [issue#1593](https://github.com/rust-lang/crates.io/issues/1593).
 ///
-static CRATES_403: [(&str, &str); 22] = [
+static CRATES_403: [(&str, &str); 23] = [
     ("glib-2-0-sys", "0.0.1"),
     ("glib-2-0-sys", "0.0.2"),
     ("glib-2-0-sys", "0.0.3"),
@@ -38,6 +38,7 @@ static CRATES_403: [(&str, &str); 22] = [
     ("gobject-2-0-sys", "0.0.6"),
     ("gobject-2-0-sys", "0.0.7"),
     ("gobject-2-0-sys", "0.0.8"),
+    ("gobject-2-0-sys", "0.0.9"),
     ("gobject-2-0-sys", "0.1.0"),
     ("gobject-2-0-sys", "0.2.0"),
 ];
@@ -59,7 +60,7 @@ pub(crate) async fn verify_mirror(path: std::path::PathBuf) -> Result<(), Verify
         eprintln!("No index repository found in {}.", repo_path.display())
     }
 
-    let prefix = padded_prefix_message(1, 1, "Comparing crates.io and mirror coherence");
+    let prefix = padded_prefix_message(1, 1, "Comparing local crates.io and mirror coherence");
 
     // Getting diff tree from local crates.io repository.
     let repo = Repository::open(repo_path)?;
@@ -116,7 +117,7 @@ pub(crate) async fn verify_mirror(path: std::path::PathBuf) -> Result<(), Verify
                 if !CRATES_403
                     .iter()
                     .any(|it| it.0 == crate_entry.get_name() && it.1 == crate_entry.get_vers())
-                    && !crate_entry.yanked
+                    && !crate_entry.get_yanked()
                     && !file_path.exists()
                 {
                     missing_crates.push(crate_entry);
@@ -129,6 +130,8 @@ pub(crate) async fn verify_mirror(path: std::path::PathBuf) -> Result<(), Verify
         None,
         None,
     )?;
+
+    pb.finish();
 
     if !missing_crates.is_empty() {
         return Err(VerifyError::MissingCrates(missing_crates));
