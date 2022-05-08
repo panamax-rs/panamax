@@ -39,6 +39,20 @@ pub struct CrateEntry {
     yanked: bool,
 }
 
+impl CrateEntry {
+    pub(crate) fn get_name(&self) -> &str {
+        self.name.as_str()
+    }
+
+    pub(crate) fn get_vers(&self) -> &str {
+        self.vers.as_str()
+    }
+
+    pub(crate) fn get_yanked(&self) -> bool {
+        self.yanked
+    }
+}
+
 /// Download one single crate file.
 pub async fn sync_one_crate_entry(
     path: &Path,
