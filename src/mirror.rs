@@ -117,7 +117,7 @@ pub fn default_user_agent() -> String {
     format!("Panamax/{}", env!("CARGO_PKG_VERSION"))
 }
 
-pub async fn sync(path: &Path) -> Result<(), MirrorError> {
+pub async fn sync(path: &Path, no_update_index: bool) -> Result<(), MirrorError> {
     if !path.join("mirror.toml").exists() {
         eprintln!(
             "Mirror base not found! Run panamax init {} first.",
@@ -174,7 +174,7 @@ pub async fn sync(path: &Path) -> Result<(), MirrorError> {
 
     if let Some(crates) = mirror.crates {
         if crates.sync {
-            sync_crates(path, &mirror.mirror, &crates, &user_agent).await;
+            sync_crates(path, &mirror.mirror, &crates, &user_agent, no_update_index).await;
         } else {
             eprintln!("Crates sync is disabled, skipping...");
         }
@@ -225,13 +225,18 @@ pub async fn sync_crates(
     mirror: &ConfigMirror,
     crates: &ConfigCrates,
     user_agent: &HeaderValue,
+    no_update_index: bool,
 ) {
-    eprintln!("{}", style("Syncing Crates repositories...").bold());
+    if !no_update_index {
+        eprintln!("{}", style("Syncing Crates repositories...").bold());
 
-    if let Err(e) = crate::crates_index::sync_crates_repo(path, crates) {
-        eprintln!("Downloading crates.io-index repository failed: {:?}", e);
-        eprintln!("You will need to sync again to finish this download.");
-        return;
+        if let Err(e) = crate::crates_index::sync_crates_repo(path, crates) {
+            eprintln!("Downloading crates.io-index repository failed: {:?}", e);
+            eprintln!("You will need to sync again to finish this download.");
+            return;
+        }
+    } else {
+        eprintln!("{}", style("--no_update_index specified, only syncing Crates files...").bold());
     }
 
     if let Err(e) = crate::crates::sync_crates_files(path, mirror, crates, user_agent).await {
@@ -240,12 +245,15 @@ pub async fn sync_crates(
         return;
     }
 
-    if let Err(e) = crate::crates_index::update_crates_config(path, crates) {
-        eprintln!("Updating crates.io-index config failed: {:?}", e);
-        eprintln!("You will need to sync again to finish this download.");
+    if !no_update_index {
+        if let Err(e) = crate::crates_index::update_crates_config(path, crates) {
+            eprintln!("Updating crates.io-index config failed: {:?}", e);
+            eprintln!("You will need to sync again to finish this download.");
+        }
+        eprintln!("{}", style("Syncing Crates repositories complete!").bold());
+    } else {
+        eprintln!("{}", style("Syncing Crates files complete!").bold());
     }
-
-    eprintln!("{}", style("Syncing Crates repositories complete!").bold());
 }
 
 pub async fn serve(

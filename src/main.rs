@@ -27,6 +27,13 @@ enum Panamax {
         /// Mirror directory.
         #[structopt(parse(from_os_str))]
         path: PathBuf,
+
+        /// Sync but do not update the index.
+        /// We have the index we want to use, and
+        /// do not want to possibly break our
+        /// environment since we aren't connect to github.
+        #[structopt(short, long)]
+        no_update_index: bool,
     },
 
     /// Rewrite the config.json within crates.io-index.
@@ -98,7 +105,7 @@ async fn main() {
     let opt = Panamax::from_args();
     match opt {
         Panamax::Init { path } => mirror::init(&path),
-        Panamax::Sync { path } => mirror::sync(&path).await,
+        Panamax::Sync { path, no_update_index } => mirror::sync(&path, no_update_index).await,
         Panamax::Rewrite { path, base_url } => mirror::rewrite(&path, base_url),
         Panamax::Serve {
             path,
