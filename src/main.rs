@@ -1,5 +1,5 @@
+use clap::Parser;
 use std::{net::IpAddr, path::PathBuf};
-use structopt::StructOpt;
 
 mod crates;
 mod crates_index;
@@ -11,21 +11,18 @@ mod serve;
 mod verify;
 
 /// Mirror rustup and crates.io repositories, for offline Rust and cargo usage.
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 enum Panamax {
     /// Create a new mirror directory.
-    #[structopt(name = "init", alias = "new")]
     Init {
-        /// Directory to store the mirror.
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         path: PathBuf,
     },
 
     /// Update an existing mirror directory.
-    #[structopt(name = "sync", alias = "run")]
     Sync {
         /// Mirror directory.
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         path: PathBuf,
     },
 
@@ -33,41 +30,41 @@ enum Panamax {
     ///
     /// This can be used if rewriting config.json is
     /// required to be an extra step after syncing.
-    #[structopt(name = "rewrite")]
+    #[clap(name = "rewrite")]
     Rewrite {
         /// Mirror directory.
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         path: PathBuf,
 
         /// Base URL used for rewriting. Overrides value in mirror.toml.
-        #[structopt(short, long)]
+        #[clap(short, long)]
         base_url: Option<String>,
     },
 
     /// Serve a mirror directory.
-    #[structopt(name = "serve")]
+    #[clap(name = "serve")]
     Serve {
         /// Mirror directory.
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         path: PathBuf,
 
         /// IP address to listen on. Defaults to listening on everything.
-        #[structopt(short, long)]
+        #[clap(short, long)]
         listen: Option<IpAddr>,
 
         /// Port to listen on.
         /// Defaults to 8080, or 8443 if TLS certificate provided.
-        #[structopt(short, long)]
+        #[clap(short, long)]
         port: Option<u16>,
 
         /// Path to a TLS certificate file. This enables TLS.
         /// Also requires key_path.
-        #[structopt(long)]
+        #[clap(long)]
         cert_path: Option<PathBuf>,
 
         /// Path to a TLS key file.
         /// Also requires cert_path.
-        #[structopt(long)]
+        #[clap(long)]
         key_path: Option<PathBuf>,
     },
 
@@ -75,19 +72,19 @@ enum Panamax {
     ///
     /// This is useful for finding what can be used for
     /// limiting platforms in mirror.toml.
-    #[structopt(name = "list-platforms")]
+    #[clap(name = "list-platforms")]
     ListPlatforms {
-        #[structopt(long, default_value = "https://static.rust-lang.org")]
+        #[clap(long, default_value = "https://static.rust-lang.org")]
         source: String,
-        #[structopt(long, default_value = "nightly")]
+        #[clap(long, default_value = "nightly")]
         channel: String,
     },
 
     /// Verify coherence between local mirror and local crates.io-index.
-    #[structopt(name = "verify", alias = "check")]
+    #[clap(name = "verify", alias = "check")]
     Verify {
         /// Mirror directory.
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         path: PathBuf,
     },
 }
@@ -95,7 +92,7 @@ enum Panamax {
 #[tokio::main]
 async fn main() {
     env_logger::init();
-    let opt = Panamax::from_args();
+    let opt = Panamax::parse();
     match opt {
         Panamax::Init { path } => mirror::init(&path),
         Panamax::Sync { path } => mirror::sync(&path).await,
