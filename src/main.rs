@@ -81,11 +81,22 @@ enum Panamax {
     },
 
     /// Verify coherence between local mirror and local crates.io-index.
+    /// If any missing crate is found, ask to user before downloading by default.
     #[clap(name = "verify", alias = "check")]
     Verify {
         /// Mirror directory.
         #[clap(parse(from_os_str))]
         path: PathBuf,
+
+        /// Dry run, i.e. no change will be made to the mirror.
+        /// Missing crates are just printed to stdout, not downloaded.
+        #[clap(long)]
+        dry_run: bool,
+
+        /// Assume yes from user.
+        /// Ignored if dry-run is supplied.
+        #[clap(long)]
+        assume_yes: bool,
     },
 }
 
@@ -105,7 +116,11 @@ async fn main() {
             key_path,
         } => mirror::serve(path, listen, port, cert_path, key_path).await,
         Panamax::ListPlatforms { source, channel } => mirror::list_platforms(source, channel).await,
-        Panamax::Verify { path } => mirror::verify(path).await,
+        Panamax::Verify {
+            path,
+            dry_run,
+            assume_yes,
+        } => mirror::verify(path, dry_run, assume_yes).await,
     }
     .unwrap_or_else(|e| eprintln!("Panamax command failed! {}", e));
 }

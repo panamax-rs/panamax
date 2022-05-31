@@ -13,12 +13,14 @@ use crate::crates_index::rewrite_config_json;
 use crate::download::download_string;
 use crate::rustup::Channel;
 use crate::serve::TlsConfig;
-use crate::verify::{self, VerifyError};
+use crate::verify;
 
 #[derive(Error, Debug)]
 pub enum MirrorError {
     #[error("IO error: {0}")]
     Io(#[from] io::Error),
+    #[error("Git error: {0}")]
+    Git(#[from] git2::Error),
     #[error("TOML deserialization error: {0}")]
     Parse(#[from] toml::de::Error),
     #[error("Config file error: {0}")]
@@ -324,7 +326,13 @@ pub(crate) async fn list_platforms(source: String, channel: String) -> Result<()
 }
 
 /// Verify coherence between local mirror and local crates.io-index.
-pub(crate) async fn verify(path: PathBuf) -> Result<(), MirrorError> {
+/// This function is bale to fix mirror by downloading missing crates.
+/// Users can alter the actual downloaded file at run time.
+pub(crate) async fn verify(
+    path: PathBuf,
+    dry_run: bool,
+    assume_yes: bool,
+) -> Result<(), MirrorError> {
     if !path.join("mirror.toml").exists() {
         eprintln!(
             "Mirror base not found! Run panamax init {} first.",
@@ -332,13 +340,13 @@ pub(crate) async fn verify(path: PathBuf) -> Result<(), MirrorError> {
         );
         return Ok(());
     }
-    let mirror = load_mirror_toml(&path)?;
+    let config = load_mirror_toml(&path)?;
 
     // Fail if use_new_crates_format is not true, and old format is detected.
     // If use_new_crates_format is true and new format is detected, warn the user.
     // If use_new_crates_format is true, ignore the format and assume it's new.
-    if let Some(crates) = &mirror.crates {
-        if crates.sync && !is_new_crates_format(&path.join("crates"))? {
+    if let Some(config) = &config.crates {
+        if config.sync && !is_new_crates_format(&path.join("crates"))? {
             eprintln!("Your crates directory is using the old 0.2 format, however");
             eprintln!("Panamax 0.3+ has deprecated this format for a new one.");
             eprintln!("Please delete crates/ from your mirror directory to continue.");
@@ -348,13 +356,49 @@ pub(crate) async fn verify(path: PathBuf) -> Result<(), MirrorError> {
 
     eprintln!("{}", style("Verifying mirror state...").bold());
 
-    if let Err(e) = verify::verify_mirror(path).await {
-        match e {
-            VerifyError::MissingCrates(vec) => vec.iter().for_each(|c| {
-                eprintln!("Missing crate: {} - version {}", c.get_name(), c.get_vers());
-            }),
-            VerifyError::GitError(e) => eprintln!("Git Error: {e}"),
+    // Getting crates.sync config state
+    let crates_config = config.crates.as_ref();
+    let sync = crates_config.map_or(false, |crate_config| crate_config.sync);
+
+    // Determining number of steps
+    let steps = if dry_run || !sync { 1 } else { 2 };
+    let mut current_step = 1;
+
+    if let Some(mut missing_crates) =
+        verify::verify_mirror(path.clone(), &mut current_step, steps).await?
+    {
+        if dry_run || !sync {
+            if !sync {
+                eprintln!("Crates sync is disabled, only printing missing crates...");
+            }
+            missing_crates.iter().for_each(|c| {
+                println!("Missing crate: {} - version {}", c.get_name(), c.get_vers());
+            });
+            return Ok(());
         }
+
+        // Safe to unwrap here
+        let crates_config = crates_config.unwrap();
+
+        debug_assert_ne!(steps, current_step);
+
+        // Ask users to choose whether to filter missing crates to download or not
+        if !assume_yes {
+            missing_crates = verify::handle_user_input(missing_crates).await?;
+        }
+
+        let mirror_config = &config.mirror;
+
+        // Downloading missing crates
+        verify::fix_mirror(
+            mirror_config,
+            crates_config,
+            path,
+            missing_crates,
+            &mut current_step,
+            steps,
+        )
+        .await?;
     }
 
     Ok(())
