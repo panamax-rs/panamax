@@ -34,10 +34,7 @@ tokio-stream = "0.1.7"
 tokio-util = { version = "0.6.8", features = ["codec"] }
 futures-util = "0.3.17"
 futures = "0.3.17"
+walkdir = "2.3.2"
 
 [features]
 default = []
-
-# For development purposes, reduce the crate download count
-# and only download crates that start with z
-dev_reduced_crates = []

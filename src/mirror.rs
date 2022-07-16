@@ -117,7 +117,7 @@ pub fn default_user_agent() -> String {
     format!("Panamax/{}", env!("CARGO_PKG_VERSION"))
 }
 
-pub async fn sync(path: &Path) -> Result<(), MirrorError> {
+pub async fn sync(path: &Path, vendor_path: Option<PathBuf>) -> Result<(), MirrorError> {
     if !path.join("mirror.toml").exists() {
         eprintln!(
             "Mirror base not found! Run panamax init {} first.",
@@ -174,7 +174,7 @@ pub async fn sync(path: &Path) -> Result<(), MirrorError> {
 
     if let Some(crates) = mirror.crates {
         if crates.sync {
-            sync_crates(path, &mirror.mirror, &crates, &user_agent).await;
+            sync_crates(path, vendor_path, &mirror.mirror, &crates, &user_agent).await;
         } else {
             eprintln!("Crates sync is disabled, skipping...");
         }
@@ -222,6 +222,7 @@ pub fn rewrite(path: &Path, base_url: Option<String>) -> Result<(), MirrorError>
 /// Synchronize and handle the crates.io-index repository.
 pub async fn sync_crates(
     path: &Path,
+    vendor_path: Option<PathBuf>,
     mirror: &ConfigMirror,
     crates: &ConfigCrates,
     user_agent: &HeaderValue,
@@ -234,7 +235,9 @@ pub async fn sync_crates(
         return;
     }
 
-    if let Err(e) = crate::crates::sync_crates_files(path, mirror, crates, user_agent).await {
+    if let Err(e) =
+        crate::crates::sync_crates_files(path, vendor_path, mirror, crates, user_agent).await
+    {
         eprintln!("Downloading crates failed: {:?}", e);
         eprintln!("You will need to sync again to finish this download.");
         return;

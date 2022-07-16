@@ -80,6 +80,16 @@ This directory can now be copied to a USB or rsync'd somewhere else, or even use
 
 Additionally, this mirror can continually by synchronized in the future - one recommendation is to run this command in a cronjob once each night, to keep the mirror reasonably up to date.
 
+### Sync Select Dependencies
+Optionally, panamax can be told to only grab crates needed to build a singular project.
+`cargo vendor` is used to create a folder with all needed dependencies,
+then a panamax command can parse the created directory and only grab those crates and versions.
+```
+# Only grab crates needed for panamax, as an example
+$ cargo vendor
+$ panamax sync my-mirror vendor
+```
+
 ## Server
 
 Panamax provides a warp-based HTTP(S) server that can handle serving a Rust mirror fast and at scale. This is the recommended way to serve the mirror.

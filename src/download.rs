@@ -234,7 +234,7 @@ pub async fn download_with_sha256_file(
     force_download: bool,
     user_agent: &HeaderValue,
 ) -> Result<(), DownloadError> {
-    let sha256_url = format!("{}.sha256", url);
+    let sha256_url = format!("{url}.sha256");
     let sha256_data = download_string(&sha256_url, user_agent).await?;
 
     let sha256_hash = &sha256_data[..64];
