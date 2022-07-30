@@ -7,6 +7,7 @@ use git2::Repository;
 use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
 use reqwest::header::HeaderValue;
 use serde::{Deserialize, Serialize};
+use std::ffi::OsStr;
 use std::fs::read_dir;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -94,15 +95,33 @@ pub async fn sync_one_crate_entry(
 // TODO: There are still many unwraps in the foreach sections. This needs to be fixed.
 pub async fn sync_crates_files(
     path: &Path,
+    vendor_path: Option<PathBuf>,
     mirror: &ConfigMirror,
     crates: &ConfigCrates,
     user_agent: &HeaderValue,
 ) -> Result<(), SyncError> {
-    let prefix = if cfg!(feature = "dev_reduced_crates") {
-        padded_prefix_message(2, 3, "Syncing 'z' crates files")
-    } else {
-        padded_prefix_message(2, 3, "Syncing crates files")
-    };
+    // if a vendor_path, parse the filepath for Cargo.toml files for each crate, filling vendors
+    let mut vendors = vec![];
+    if let Some(vendor_path) = &vendor_path {
+        use walkdir::WalkDir;
+        for entry in WalkDir::new(vendor_path.as_path())
+            .min_depth(1)
+            .max_depth(2)
+        {
+            let path = entry.as_ref().unwrap().path();
+            if path.file_name() == Some(OsStr::new("Cargo.toml")) {
+                let s = fs::read_to_string(entry.unwrap().path()).unwrap();
+                let crate_toml = s.parse::<toml::Value>().unwrap();
+                if let toml::Value::Table(crate_f) = crate_toml {
+                    let name = crate_f["package"]["name"].to_string().replace('\"', "");
+                    let version = crate_f["package"]["version"].to_string().replace('\"', "");
+                    vendors.push((name, version));
+                }
+            }
+        }
+    }
+
+    let prefix = padded_prefix_message(2, 3, "Syncing crates files");
 
     // For now, assume successful crates.io-index download
     let repo_path = path.join("crates.io-index");
@@ -151,20 +170,6 @@ pub async fn sync_crates_files(
                 return true;
             }
 
-            // DEV: if dev_reduced_crates is enabled, only download crates that start with z
-            #[cfg(feature = "dev_reduced_crates")]
-            {
-                // Get file name, try-convert to string, check if starts_with z, unwrap, or false if None
-                if !p
-                    .file_name()
-                    .and_then(|x| x.to_str())
-                    .map(|x| x.starts_with('z'))
-                    .unwrap_or(false)
-                {
-                    return true;
-                }
-            }
-
             // Get the data for this crate file
             let oid = df.id();
             if oid.is_zero() {
@@ -179,8 +184,22 @@ pub async fn sync_crates_files(
             // Download one crate for each of the versions in the crate file
             for line in Cursor::new(data).lines() {
                 let line = line.unwrap();
-                let c: CrateEntry = match serde_json::from_str(&line) {
-                    Ok(c) => c,
+                let c = match serde_json::from_str::<CrateEntry>(&line) {
+                    Ok(c) => {
+                        // if vendor_path, check for matching crate name/version
+                        if vendor_path.is_some() {
+                            if vendors
+                                .iter()
+                                .any(|a| a == &(c.name.clone(), c.vers.clone()))
+                            {
+                                c
+                            } else {
+                                continue;
+                            }
+                        } else {
+                            c
+                        }
+                    }
                     Err(_) => {
                         continue;
                     }

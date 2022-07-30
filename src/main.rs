@@ -24,6 +24,9 @@ enum Panamax {
         /// Mirror directory.
         #[clap(parse(from_os_str))]
         path: PathBuf,
+        /// cargo-vendor directory.
+        #[clap(parse(from_os_str))]
+        vendor_path: Option<PathBuf>,
     },
 
     /// Rewrite the config.json within crates.io-index.
@@ -95,7 +98,7 @@ async fn main() {
     let opt = Panamax::parse();
     match opt {
         Panamax::Init { path } => mirror::init(&path),
-        Panamax::Sync { path } => mirror::sync(&path).await,
+        Panamax::Sync { path, vendor_path } => mirror::sync(&path, vendor_path).await,
         Panamax::Rewrite { path, base_url } => mirror::rewrite(&path, base_url),
         Panamax::Serve {
             path,
