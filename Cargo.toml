@@ -38,3 +38,4 @@ walkdir = "2.3.2"
 
 [features]
 default = []
+vendored-openssl = ["reqwest/native-tls-vendored"]
