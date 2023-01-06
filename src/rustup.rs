@@ -873,9 +873,9 @@ pub async fn sync(
 
     // If all succeeds, clean files
     step += 1;
-    if rustup.keep_latest_stables == None
-        && rustup.keep_latest_betas == None
-        && rustup.keep_latest_nightlies == None
+    if rustup.keep_latest_stables.is_none()
+        && rustup.keep_latest_betas.is_none()
+        && rustup.keep_latest_nightlies.is_none()
     {
         eprintln!(
             "{} Skipping cleaning files.",
