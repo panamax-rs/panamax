@@ -29,7 +29,7 @@ cat &lt;&lt;EOT > ~/.cargo/config
 [source.panamax]
 registry = "{{ host }}/git/crates.io-index"
 [source.panamax-sparse]
-registry = "{{ host }}/index/"
+registry = "sparse+{{ host }}/index/"
 
 [source.crates-io]
 # To use sparse index, change "panamax" to "panamax-sparse".
