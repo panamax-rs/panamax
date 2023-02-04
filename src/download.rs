@@ -127,7 +127,6 @@ async fn one_download(
     hash: Option<&str>,
     user_agent: &HeaderValue,
 ) -> Result<(), DownloadError> {
-
     let mut http_res = client
         .get(url)
         .header(USER_AGENT, user_agent)

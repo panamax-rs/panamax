@@ -8,8 +8,8 @@ use crate::progress_bar::{current_step_prefix, padded_prefix_message};
 use console::style;
 use futures::StreamExt;
 use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
-use reqwest::Client;
 use reqwest::header::HeaderValue;
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -151,6 +151,7 @@ pub async fn get_platforms(rustup: &ConfigRustup) -> Result<Platforms, MirrorErr
 }
 
 /// Synchronize one rustup-init file.
+#[allow(clippy::too_many_arguments)]
 pub async fn sync_one_init(
     client: &Client,
     path: &Path,
@@ -598,7 +599,15 @@ pub async fn sync_rustup_channel(
         };
     let channel_part_path = append_to_path(&channel_path, ".part");
     let client = Client::new();
-    download_with_sha256_file(&client, &channel_url, &channel_part_path, retries, true, user_agent).await?;
+    download_with_sha256_file(
+        &client,
+        &channel_url,
+        &channel_part_path,
+        retries,
+        true,
+        user_agent,
+    )
+    .await?;
 
     // Open toml file, find all files to download
     let (date, files) = rustup_download_list(
@@ -627,8 +636,16 @@ pub async fn sync_rustup_channel(
             let pb = pb.clone();
 
             tokio::spawn(async move {
-                let out =
-                    sync_one_rustup_target(&client, &path, &source, &url, &hash, retries, &user_agent).await;
+                let out = sync_one_rustup_target(
+                    &client,
+                    &path,
+                    &source,
+                    &url,
+                    &hash,
+                    retries,
+                    &user_agent,
+                )
+                .await;
 
                 pb.inc(1);
 
