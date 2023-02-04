@@ -21,12 +21,16 @@ use thiserror::Error;
 pub enum SyncError {
     #[error("IO error: {0}")]
     Io(#[from] io::Error),
+
     #[error("Download error: {0}")]
     Download(#[from] DownloadError),
+
     #[error("JSON serialization error: {0}")]
     SerializeError(#[from] serde_json::Error),
+
     #[error("Git error: {0}")]
     GitError(#[from] git2::Error),
+
     #[error("Index syncing error: {0}")]
     IndexSync(#[from] IndexSyncError),
 }
@@ -111,8 +115,8 @@ pub async fn sync_crates_files(
             let path = entry.as_ref().unwrap().path();
             if path.file_name() == Some(OsStr::new("Cargo.toml")) {
                 let s = fs::read_to_string(entry.unwrap().path()).unwrap();
-                let crate_toml = s.parse::<toml::Value>().unwrap();
-                if let toml::Value::Table(crate_f) = crate_toml {
+                let crate_toml = s.parse::<toml_edit::easy::Value>().unwrap();
+                if let toml_edit::easy::Value::Table(crate_f) = crate_toml {
                     let name = crate_f["package"]["name"].to_string().replace('\"', "");
                     let version = crate_f["package"]["version"].to_string().replace('\"', "");
                     vendors.push((name, version));

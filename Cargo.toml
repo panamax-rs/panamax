@@ -13,7 +13,6 @@ edition = "2021"
 reqwest = { version = "0.11.4", features = ["blocking"] }
 indicatif = "0.17"
 clap = { version = "4.1", features = ["derive"] }
-toml = "0.7"
 serde = { version = "1.0", features = ["derive"] }
 console = "0.15"
 log = "0.4"
@@ -35,6 +34,7 @@ tokio-util = { version = "0.7", features = ["codec"] }
 futures-util = "0.3"
 futures = "0.3"
 walkdir = "2.3"
+toml_edit = {version = "0.14.0", features = ["easy"] }
 
 [features]
 default = []

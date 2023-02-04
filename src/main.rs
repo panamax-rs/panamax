@@ -17,6 +17,10 @@ enum Panamax {
     Init {
         #[arg(value_parser)]
         path: PathBuf,
+
+        /// set [rustup] sync = false
+        #[clap(long)]
+        ignore_rustup: bool,
     },
 
     /// Update an existing mirror directory.
@@ -24,6 +28,7 @@ enum Panamax {
         /// Mirror directory.
         #[arg(value_parser)]
         path: PathBuf,
+
         /// cargo-vendor directory.
         #[arg(value_parser)]
         vendor_path: Option<PathBuf>,
@@ -79,7 +84,8 @@ enum Panamax {
     ListPlatforms {
         #[arg(long, default_value = "https://static.rust-lang.org")]
         source: String,
-        #[arg(long, default_value = "nightly")]
+
+        #[clap(long, default_value = "nightly")]
         channel: String,
     },
 
@@ -108,7 +114,10 @@ async fn main() {
     env_logger::init();
     let opt = Panamax::parse();
     match opt {
-        Panamax::Init { path } => mirror::init(&path),
+        Panamax::Init {
+            path,
+            ignore_rustup,
+        } => mirror::init(&path, ignore_rustup),
         Panamax::Sync { path, vendor_path } => mirror::sync(&path, vendor_path).await,
         Panamax::Rewrite { path, base_url } => mirror::rewrite(&path, base_url),
         Panamax::Serve {
