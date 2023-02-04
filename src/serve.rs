@@ -223,21 +223,22 @@ async fn get_rustup_platforms(path: PathBuf) -> io::Result<Vec<Platform>> {
 
     // Look at the rustup/dist directory for all rustup-init and rustup-init.exe files.
     // Also return if the rustup-init file is a .exe or not.
-    let mut rd = tokio::fs::read_dir(rustup_path).await?;
-    while let Some(entry) = rd.next_entry().await? {
-        if entry.metadata().await?.is_dir() {
-            if let Some(name) = entry.file_name().to_str() {
-                let platform_triple = name.to_string();
-                if entry.path().join("rustup-init").exists() {
-                    output.push(Platform {
-                        is_exe: false,
-                        platform_triple,
-                    });
-                } else if entry.path().join("rustup-init.exe").exists() {
-                    output.push(Platform {
-                        is_exe: true,
-                        platform_triple,
-                    });
+    if let Ok(mut rd) = tokio::fs::read_dir(rustup_path).await {
+        while let Some(entry) = rd.next_entry().await? {
+            if entry.metadata().await?.is_dir() {
+                if let Some(name) = entry.file_name().to_str() {
+                    let platform_triple = name.to_string();
+                    if entry.path().join("rustup-init").exists() {
+                        output.push(Platform {
+                            is_exe: false,
+                            platform_triple,
+                        });
+                    } else if entry.path().join("rustup-init.exe").exists() {
+                        output.push(Platform {
+                            is_exe: true,
+                            platform_triple,
+                        });
+                    }
                 }
             }
         }
