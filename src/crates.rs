@@ -348,7 +348,10 @@ pub fn get_crate_path(
     let crate_path = match crate_name.len() {
         1 => PathBuf::from("1"),
         2 => PathBuf::from("2"),
-        3 => PathBuf::from("3"),
+        3 => {
+            let first_char = crate_name.get(0..1)?;
+            PathBuf::from("3").join(first_char)
+        }
         n if n >= 4 => {
             let first_two = crate_name.get(0..2)?;
             let second_two = crate_name.get(2..4)?;
