@@ -183,12 +183,17 @@ pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<Tls
             },
         );
 
+    // Handle sparse index requests at /index/
+    let sparse_index = warp::path("index")
+        .and(warp::fs::dir(path.join("crates.io-index")));
+
     let routes = index
         .or(static_dir)
         .or(dist_dir)
         .or(rustup_dir)
         .or(crates_dir_native_format)
         .or(crates_dir_condensed_format)
+        .or(sparse_index)
         .or(git);
 
     match tls_paths {

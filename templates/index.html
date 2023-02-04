@@ -28,7 +28,11 @@ source ~/.bashrc</pre>
 cat &lt;&lt;EOT > ~/.cargo/config
 [source.panamax]
 registry = "{{ host }}/git/crates.io-index"
+[source.panamax-sparse]
+registry = "{{ host }}/index/"
+
 [source.crates-io]
+# To use sparse index, change "panamax" to "panamax-sparse".
 replace-with = "panamax"
 EOT</pre>
         </div>
