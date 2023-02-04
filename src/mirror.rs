@@ -159,7 +159,7 @@ pub async fn sync(path: &Path, vendor_path: Option<PathBuf>) -> Result<(), Mirro
         Err(e) => {
             eprintln!("Your contact information contains invalid characters!");
             eprintln!("It's recommended to use a URL or email address as contact information.");
-            eprintln!("{:?}", e);
+            eprintln!("{e:?}");
             return Ok(());
         }
     };
@@ -206,7 +206,7 @@ pub fn rewrite(path: &Path, base_url: Option<String>) -> Result<(), MirrorError>
     if let Some(crates) = mirror.crates {
         if let Some(base_url) = base_url.as_deref().or(crates.base_url.as_deref()) {
             if let Err(e) = rewrite_config_json(&path.join("crates.io-index"), base_url) {
-                eprintln!("Updating crates.io-index config failed: {:?}", e);
+                eprintln!("Updating crates.io-index config failed: {e:?}");
             }
         } else {
             eprintln!("No base_url was provided.");
@@ -232,7 +232,7 @@ pub async fn sync_crates(
     eprintln!("{}", style("Syncing Crates repositories...").bold());
 
     if let Err(e) = crate::crates_index::sync_crates_repo(path, crates) {
-        eprintln!("Downloading crates.io-index repository failed: {:?}", e);
+        eprintln!("Downloading crates.io-index repository failed: {e:?}");
         eprintln!("You will need to sync again to finish this download.");
         return;
     }
@@ -240,13 +240,13 @@ pub async fn sync_crates(
     if let Err(e) =
         crate::crates::sync_crates_files(path, vendor_path, mirror, crates, user_agent).await
     {
-        eprintln!("Downloading crates failed: {:?}", e);
+        eprintln!("Downloading crates failed: {e:?}");
         eprintln!("You will need to sync again to finish this download.");
         return;
     }
 
     if let Err(e) = crate::crates_index::update_crates_config(path, crates) {
-        eprintln!("Updating crates.io-index config failed: {:?}", e);
+        eprintln!("Updating crates.io-index config failed: {e:?}");
         eprintln!("You will need to sync again to finish this download.");
     }
 
@@ -297,7 +297,7 @@ pub async fn serve(
 
 /// Print out a list of all platforms.
 pub(crate) async fn list_platforms(source: String, channel: String) -> Result<(), MirrorError> {
-    let channel_url = format!("{}/dist/channel-rust-{}.toml", source, channel);
+    let channel_url = format!("{source}/dist/channel-rust-{channel}.toml");
     let user_agent = HeaderValue::from_str(&format!("Panamax/{}", env!("CARGO_PKG_VERSION")))
         .expect("Hardcoded user agent string should never fail.");
     let channel_str = download_string(&channel_url, &user_agent).await?;
@@ -317,12 +317,9 @@ pub(crate) async fn list_platforms(source: String, channel: String) -> Result<()
     let mut targets: Vec<String> = targets.into_iter().collect();
     targets.sort();
 
-    println!(
-        "All currently available platforms for the {} channel:",
-        channel
-    );
+    println!("All currently available platforms for the {channel} channel:");
     for t in targets {
-        println!("  {}", t);
+        println!("  {t}");
     }
 
     Ok(())

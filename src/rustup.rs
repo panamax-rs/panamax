@@ -225,9 +225,9 @@ pub async fn sync_one_init(
     });
 
     let source_url = if is_exe {
-        format!("{}/rustup/dist/{}/rustup-init.exe", source, platform)
+        format!("{source}/rustup/dist/{platform}/rustup-init.exe")
     } else {
-        format!("{}/rustup/dist/{}/rustup-init", source, platform)
+        format!("{source}/rustup/dist/{platform}/rustup-init")
     };
 
     download_with_sha256_file(&source_url, &local_path, retries, false, user_agent).await?;
@@ -306,7 +306,7 @@ pub async fn sync_rustup_init(
     let mut errors_occurred = 0usize;
 
     // Download rustup release file
-    let release_url = format!("{}/rustup/release-stable.toml", source);
+    let release_url = format!("{source}/rustup/release-stable.toml");
     let release_path = path.join("rustup/release-stable.toml");
     let release_part_path = append_to_path(&release_path, ".part");
 
@@ -362,7 +362,7 @@ pub async fn sync_rustup_init(
                 DownloadError::NotFound { .. } => {}
                 _ => {
                     errors_occurred += 1;
-                    eprintln!("Download failed: {:?}", e);
+                    eprintln!("Download failed: {e:?}");
                 }
             }
         }
@@ -436,7 +436,7 @@ pub async fn sync_one_rustup_target(
 ) -> Result<(), DownloadError> {
     // Chop off the source portion of the URL, to mimic the rest of the path
     //let target_url = path.join(url[source.len()..].trim_start_matches("/"));
-    let target_url = format!("{}/{}", source, url);
+    let target_url = format!("{source}/{url}");
     let target_path: PathBuf = std::iter::once(path.to_owned())
         .chain(url.split('/').map(PathBuf::from))
         .collect();
@@ -558,7 +558,7 @@ pub fn clean_old_files(
 }
 
 pub fn get_channel_history(path: &Path, channel: &str) -> Result<ChannelHistoryFile, SyncError> {
-    let channel_history_path = path.join(format!("mirror-{}-history.toml", channel));
+    let channel_history_path = path.join(format!("mirror-{channel}-history.toml"));
     let ch_data = fs::read_to_string(channel_history_path)?;
     Ok(toml::from_str(&ch_data)?)
 }
@@ -587,7 +587,7 @@ pub fn add_to_channel_history(
 
     let ch_data = toml::to_string(&channel_history)?;
 
-    let channel_history_path = path.join(format!("mirror-{}-history.toml", channel));
+    let channel_history_path = path.join(format!("mirror-{channel}-history.toml"));
     write_file_create_dir(&channel_history_path, &ch_data)?;
 
     Ok(())
@@ -617,18 +617,15 @@ pub async fn sync_rustup_channel(
     // Download channel file
     let (channel_url, channel_path, extra_files) =
         if let Some(inner_channel) = channel.strip_prefix("nightly-") {
-            let url = format!(
-                "{}/dist/{}/channel-rust-nightly.toml",
-                source, inner_channel
-            );
-            let path_chunk = format!("dist/{}/channel-rust-nightly.toml", inner_channel);
+            let url = format!("{source}/dist/{inner_channel}/channel-rust-nightly.toml");
+            let path_chunk = format!("dist/{inner_channel}/channel-rust-nightly.toml");
             let path = path.join(&path_chunk);
             // Make sure the cleanup step doesn't delete the channel toml
-            let extra_files = vec![path_chunk.clone(), format!("{}.sha256", path_chunk)];
+            let extra_files = vec![path_chunk.clone(), format!("{path_chunk}.sha256")];
             (url, path, extra_files)
         } else {
-            let url = format!("{}/dist/channel-rust-{}.toml", source, channel);
-            let path = path.join(format!("dist/channel-rust-{}.toml", channel));
+            let url = format!("{source}/dist/channel-rust-{channel}.toml");
+            let path = path.join(format!("dist/channel-rust-{channel}.toml"));
             (url, path, Vec::new())
         };
     let channel_part_path = append_to_path(&channel_path, ".part");
@@ -681,7 +678,7 @@ pub async fn sync_rustup_channel(
                 DownloadError::NotFound { .. } => {}
                 _ => {
                     errors_occurred += 1;
-                    eprintln!("Download failed: {:?}", e);
+                    eprintln!("Download failed: {e:?}");
                 }
             }
         }
@@ -735,7 +732,7 @@ pub async fn sync(
     )
     .await
     {
-        eprintln!("Downloading rustup init files failed: {:?}", e);
+        eprintln!("Downloading rustup init files failed: {e:?}");
         eprintln!("You will need to sync again to finish this download.");
     }
 
@@ -761,7 +758,7 @@ pub async fn sync(
         .await
         {
             failures = true;
-            eprintln!("Downloading stable release failed: {:?}", e);
+            eprintln!("Downloading stable release failed: {e:?}");
             eprintln!("You will need to sync again to finish this download.");
         }
     } else {
@@ -791,7 +788,7 @@ pub async fn sync(
         .await
         {
             failures = true;
-            eprintln!("Downloading beta release failed: {:?}", e);
+            eprintln!("Downloading beta release failed: {e:?}");
             eprintln!("You will need to sync again to finish this download.");
         }
     } else {
@@ -821,7 +818,7 @@ pub async fn sync(
         .await
         {
             failures = true;
-            eprintln!("Downloading nightly release failed: {:?}", e);
+            eprintln!("Downloading nightly release failed: {e:?}");
             eprintln!("You will need to sync again to finish this download.");
         }
     } else {
@@ -836,7 +833,7 @@ pub async fn sync(
         for version in pinned_versions {
             step += 1;
             let prefix =
-                padded_prefix_message(step, num_steps, &format!("Syncing pinned rust {}", version));
+                padded_prefix_message(step, num_steps, &format!("Syncing pinned rust {version}"));
             if let Err(e) = sync_rustup_channel(
                 path,
                 &rustup.source,
@@ -860,11 +857,10 @@ pub async fn sync(
                         version
                     );
                     return Err(MirrorError::Config(format!(
-                        "Pinned rust version {} could not be found",
-                        version
+                        "Pinned rust version {version} could not be found"
                     )));
                 } else {
-                    eprintln!("Downloading pinned rust {} failed: {:?}", version, e);
+                    eprintln!("Downloading pinned rust {version} failed: {e:?}");
                     eprintln!("You will need to sync again to finish this download.");
                 }
             }
@@ -896,7 +892,7 @@ pub async fn sync(
             rustup.pinned_rust_versions.as_ref(),
             prefix,
         ) {
-            eprintln!("Cleaning old files failed: {:?}", e);
+            eprintln!("Cleaning old files failed: {e:?}");
             eprintln!("You may need to sync again to clean these files.");
         }
     }

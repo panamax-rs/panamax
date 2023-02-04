@@ -196,7 +196,7 @@ pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<Tls
             cert_path,
             key_path,
         }) => {
-            println!("Running TLS on {}", socket_addr);
+            println!("Running TLS on {socket_addr}");
             warp::serve(routes)
                 .tls()
                 .cert_path(cert_path)
@@ -205,7 +205,7 @@ pub async fn serve(path: PathBuf, socket_addr: SocketAddr, tls_paths: Option<Tls
                 .await;
         }
         None => {
-            println!("Running HTTP on {}", socket_addr);
+            println!("Running HTTP on {socket_addr}");
             warp::serve(routes).run(socket_addr).await;
         }
     }

@@ -273,7 +273,7 @@ pub async fn sync_crates_files(
             }) => {}
 
             Err(e) => {
-                eprintln!("Downloading failed: {:?}", e);
+                eprintln!("Downloading failed: {e:?}");
             }
         }
     }
@@ -348,6 +348,6 @@ pub fn get_crate_path(
             .join(crate_path)
             .join(crate_name)
             .join(crate_version)
-            .join(format!("{}-{}.crate", crate_name, crate_version)),
+            .join(format!("{crate_name}-{crate_version}.crate")),
     )
 }

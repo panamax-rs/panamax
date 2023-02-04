@@ -125,5 +125,5 @@ async fn main() {
             assume_yes,
         } => mirror::verify(path, dry_run, assume_yes).await,
     }
-    .unwrap_or_else(|e| eprintln!("Panamax command failed! {}", e));
+    .unwrap_or_else(|e| eprintln!("Panamax command failed! {e}"));
 }

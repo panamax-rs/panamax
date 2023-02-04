@@ -339,7 +339,7 @@ pub(crate) async fn fix_mirror(
         Err(e) => {
             eprintln!("Your contact information contains invalid characters!");
             eprintln!("It's recommended to use a URL or email address as contact information.");
-            eprintln!("{:?}", e);
+            eprintln!("{e:?}");
             return Ok(());
         }
     };
@@ -389,7 +389,7 @@ pub(crate) async fn fix_mirror(
             }) => {}
 
             Err(e) => {
-                eprintln!("Downloading failed: {:?}", e);
+                eprintln!("Downloading failed: {e:?}");
             }
         }
     }
