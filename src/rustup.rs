@@ -8,6 +8,7 @@ use crate::progress_bar::{current_step_prefix, padded_prefix_message};
 use console::style;
 use futures::StreamExt;
 use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
+use reqwest::Client;
 use reqwest::header::HeaderValue;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -151,6 +152,7 @@ pub async fn get_platforms(rustup: &ConfigRustup) -> Result<Platforms, MirrorErr
 
 /// Synchronize one rustup-init file.
 pub async fn sync_one_init(
+    client: &Client,
     path: &Path,
     source: &str,
     platform: &str,
@@ -182,7 +184,7 @@ pub async fn sync_one_init(
         format!("{source}/rustup/dist/{platform}/rustup-init")
     };
 
-    download_with_sha256_file(&source_url, &local_path, retries, false, user_agent).await?;
+    download_with_sha256_file(client, &source_url, &local_path, retries, false, user_agent).await?;
     copy_file_create_dir_with_sha256(&local_path, &archive_path)?;
 
     Ok(())
@@ -214,8 +216,10 @@ async fn create_sync_tasks(
     threads: usize,
     pb: &ProgressBar,
 ) -> Vec<Result<Result<(), DownloadError>, JoinError>> {
+    let client = Client::new();
     futures::stream::iter(platforms.iter())
         .map(|platform| {
+            let client = client.clone();
             let rustup_version = rustup_version.to_string();
             let path = path.to_path_buf();
             let source = source.to_string();
@@ -225,6 +229,7 @@ async fn create_sync_tasks(
 
             tokio::spawn(async move {
                 let out = sync_one_init(
+                    &client,
                     &path,
                     &source,
                     platform.as_str(),
@@ -257,12 +262,15 @@ pub async fn sync_rustup_init(
 ) -> Result<(), SyncError> {
     let mut errors_occurred = 0usize;
 
+    let client = Client::new();
+
     // Download rustup release file
     let release_url = format!("{source}/rustup/release-stable.toml");
     let release_path = path.join("rustup/release-stable.toml");
     let release_part_path = append_to_path(&release_path, ".part");
 
     download(
+        &client,
         &release_url,
         &release_part_path,
         None,
@@ -379,6 +387,7 @@ pub fn rustup_download_list(
 }
 
 pub async fn sync_one_rustup_target(
+    client: &Client,
     path: &Path,
     source: &str,
     url: &str,
@@ -394,6 +403,7 @@ pub async fn sync_one_rustup_target(
         .collect();
 
     download(
+        client,
         &target_url,
         &target_path,
         Some(hash),
@@ -587,7 +597,8 @@ pub async fn sync_rustup_channel(
             (url, path, Vec::new())
         };
     let channel_part_path = append_to_path(&channel_path, ".part");
-    download_with_sha256_file(&channel_url, &channel_part_path, retries, true, user_agent).await?;
+    let client = Client::new();
+    download_with_sha256_file(&client, &channel_url, &channel_part_path, retries, true, user_agent).await?;
 
     // Open toml file, find all files to download
     let (date, files) = rustup_download_list(
@@ -607,6 +618,7 @@ pub async fn sync_rustup_channel(
     let tasks = futures::stream::iter(files.iter())
         .map(|(url, hash)| {
             // Clone the variables that will be moved into the tokio task.
+            let client = client.clone();
             let path = path.to_path_buf();
             let source = source.to_string();
             let user_agent = user_agent.clone();
@@ -616,7 +628,7 @@ pub async fn sync_rustup_channel(
 
             tokio::spawn(async move {
                 let out =
-                    sync_one_rustup_target(&path, &source, &url, &hash, retries, &user_agent).await;
+                    sync_one_rustup_target(&client, &path, &source, &url, &hash, retries, &user_agent).await;
 
                 pb.inc(1);
 

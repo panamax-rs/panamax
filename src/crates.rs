@@ -5,6 +5,7 @@ use crate::progress_bar::padded_prefix_message;
 use futures::StreamExt;
 use git2::Repository;
 use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
+use reqwest::Client;
 use reqwest::header::HeaderValue;
 use serde::{Deserialize, Serialize};
 use std::ffi::OsStr;
@@ -60,6 +61,7 @@ impl CrateEntry {
 
 /// Download one single crate file.
 pub async fn sync_one_crate_entry(
+    client: &Client,
     path: &Path,
     source: Option<&str>,
     retries: usize,
@@ -85,6 +87,7 @@ pub async fn sync_one_crate_entry(
         .ok_or_else(|| DownloadError::BadCrate(crate_entry.name.clone()))?;
 
     download(
+        client,
         &url[..],
         &file_path,
         Some(&crate_entry.cksum),
@@ -249,8 +252,11 @@ pub async fn sync_crates_files(
         .with_prefix(prefix);
     pb.enable_steady_tick(Duration::from_millis(10));
 
+    let client = Client::new();
+
     let tasks = futures::stream::iter(changed_crates.into_iter())
         .map(|c| {
+            let client = client.clone();
             // Duplicate variables used in the async closure.
             let path = path.to_owned();
             let mirror_retries = mirror.retries;
@@ -260,6 +266,7 @@ pub async fn sync_crates_files(
 
             tokio::spawn(async move {
                 let out = sync_one_crate_entry(
+                    &client,
                     &path,
                     crates_source.as_deref(),
                     mirror_retries,

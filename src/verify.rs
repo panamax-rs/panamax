@@ -12,6 +12,7 @@ use console::style;
 use futures::StreamExt;
 use git2::Repository;
 use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
+use reqwest::Client;
 use warp::http::HeaderValue;
 
 use crate::{
@@ -344,11 +345,14 @@ pub(crate) async fn fix_mirror(
         }
     };
 
+    let client = Client::new();
+
     // This code is copied from `crates::sync_crates_files` and could be mutualised in a future commit.
     // For example in a function within module crates (e.g. `crates::build_and_run_tasks`)
     let tasks = futures::stream::iter(crates_to_fetch.into_iter())
         .map(|c| {
             // Duplicate variables used in the async closure.
+            let client = client.clone();
             let path = path.clone();
             let mirror_retries = mirror_config.retries;
             let crates_source = crates_source.map(|s| s.to_string());
@@ -357,6 +361,7 @@ pub(crate) async fn fix_mirror(
 
             tokio::spawn(async move {
                 let out = sync_one_crate_entry(
+                    &client,
                     &path,
                     crates_source.as_deref(),
                     mirror_retries,

@@ -121,12 +121,12 @@ pub fn copy_file_create_dir(from: &Path, to: &Path) -> Result<(), DownloadError>
 }
 
 async fn one_download(
+    client: &Client,
     url: &str,
     path: &Path,
     hash: Option<&str>,
     user_agent: &HeaderValue,
 ) -> Result<(), DownloadError> {
-    let client = Client::new();
 
     let mut http_res = client
         .get(url)
@@ -182,6 +182,7 @@ async fn one_download(
 
 /// Download file, verifying its hash, and retrying if needed
 pub async fn download(
+    client: &Client,
     url: &str,
     path: &Path,
     hash: Option<&str>,
@@ -217,7 +218,7 @@ pub async fn download(
 
     let mut res = Ok(());
     for _ in 0..=retries {
-        res = match one_download(url, path, hash, user_agent).await {
+        res = match one_download(client, url, path, hash, user_agent).await {
             Ok(_) => break,
             Err(e) => Err(e),
         }
@@ -228,6 +229,7 @@ pub async fn download(
 
 /// Download file and associated .sha256 file, verifying the hash, and retrying if needed
 pub async fn download_with_sha256_file(
+    client: &Client,
     url: &str,
     path: &Path,
     retries: usize,
@@ -239,6 +241,7 @@ pub async fn download_with_sha256_file(
 
     let sha256_hash = &sha256_data[..64];
     download(
+        client,
         url,
         path,
         Some(sha256_hash),
