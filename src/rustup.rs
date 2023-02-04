@@ -479,6 +479,7 @@ pub fn clean_old_files(
 
     for dir in fs::read_dir(dist_path)? {
         let dir = dir?.path();
+        let dir = dir.as_path();
         if dir.is_dir() {
             for full_path in fs::read_dir(dir)? {
                 let full_path = full_path?.path();
@@ -487,6 +488,11 @@ pub fn clean_old_files(
                 if !files_to_keep.contains(file_path) {
                     files_to_delete.push(file_path.to_owned());
                 }
+            }
+            
+            // Remove directory if empty.
+            if dir.read_dir()?.next().is_none() {
+                fs::remove_dir(dir)?;
             }
         }
     }
@@ -500,6 +506,7 @@ pub fn clean_old_files(
         }
         pb.inc(1);
     }
+
 
     Ok(())
 }
