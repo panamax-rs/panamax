@@ -489,7 +489,7 @@ pub fn clean_old_files(
                     files_to_delete.push(file_path.to_owned());
                 }
             }
-            
+
             // Remove directory if empty.
             if dir.read_dir()?.next().is_none() {
                 fs::remove_dir(dir)?;
@@ -506,7 +506,6 @@ pub fn clean_old_files(
         }
         pb.inc(1);
     }
-
 
     Ok(())
 }
