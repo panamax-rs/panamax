@@ -1,6 +1,6 @@
 [package]
 name = "panamax"
-version = "1.0.10"
+version = "1.0.11"
 authors = ["k3d3 <k@3d3.ca>"]
 description = "Mirror rustup and crates.io repositories, for offline Rust and Cargo usage."
 license = "MIT/Apache-2.0"
@@ -10,7 +10,7 @@ repository = "https://github.com/panamax-rs/panamax"
 edition = "2021"
 
 [dependencies]
-reqwest = { version = "0.11.4", features = ["blocking"] }
+reqwest = { version = "0.11", features = ["blocking"] }
 indicatif = "0.17"
 clap = { version = "4.1", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -34,7 +34,7 @@ tokio-util = { version = "0.7", features = ["codec"] }
 futures-util = "0.3"
 futures = "0.3"
 walkdir = "2.3"
-toml_edit = {version = "0.14.0", features = ["easy"] }
+toml_edit = {version = "0.14", features = ["easy"] }
 
 [features]
 default = []

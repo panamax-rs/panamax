@@ -19,7 +19,7 @@ enum Panamax {
         path: PathBuf,
 
         /// set [rustup] sync = false
-        #[clap(long)]
+        #[arg(long)]
         ignore_rustup: bool,
     },
 
@@ -85,7 +85,7 @@ enum Panamax {
         #[arg(long, default_value = "https://static.rust-lang.org")]
         source: String,
 
-        #[clap(long, default_value = "nightly")]
+        #[arg(long, default_value = "nightly")]
         channel: String,
     },
 
