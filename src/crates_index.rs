@@ -15,10 +15,13 @@ use crate::progress_bar::padded_prefix_message;
 pub enum IndexSyncError {
     #[error("IO error: {0}")]
     Io(#[from] io::Error),
+
     #[error("JSON serialization error: {0}")]
     SerializeError(#[from] serde_json::Error),
+
     #[error("Git error: {0}")]
     GitError(#[from] git2::Error),
+
     #[error("Number conversion error: {0}")]
     IntegerConversionError(#[from] TryFromIntError),
 }

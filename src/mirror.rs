@@ -18,16 +18,24 @@ use crate::verify;
 pub enum MirrorError {
     #[error("IO error: {0}")]
     Io(#[from] io::Error),
+
     #[error("Git error: {0}")]
     Git(#[from] git2::Error),
-    #[error("TOML deserialization error: {0}")]
-    Parse(#[from] toml::de::Error),
+
+    #[error("TOML deserialization error: {0:?}")]
+    Parse(#[from] toml_edit::de::Error),
+
     #[error("Config file error: {0}")]
     Config(String),
+
     #[error("Command line error: {0}")]
     CmdLine(String),
+
     #[error("Download error: {0}")]
     DownloadError(#[from] crate::download::DownloadError),
+
+    #[error("Toml error: {0}")]
+    Serialize(#[from] toml_edit::TomlError),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -69,10 +77,12 @@ pub struct Config {
     pub crates: Option<ConfigCrates>,
 }
 
-pub fn create_mirror_directories(path: &Path) -> Result<(), io::Error> {
-    // Rustup directories
-    fs::create_dir_all(path.join("rustup/dist"))?;
-    fs::create_dir_all(path.join("dist"))?;
+pub fn create_mirror_directories(path: &Path, ignore_rustup: bool) -> Result<(), io::Error> {
+    if !ignore_rustup {
+        // Rustup directories
+        fs::create_dir_all(path.join("rustup/dist"))?;
+        fs::create_dir_all(path.join("dist"))?;
+    }
 
     // Crates directories
     fs::create_dir_all(path.join("crates.io-index"))?;
@@ -80,27 +90,35 @@ pub fn create_mirror_directories(path: &Path) -> Result<(), io::Error> {
     Ok(())
 }
 
-pub fn create_mirror_toml(path: &Path) -> Result<bool, io::Error> {
+pub fn create_mirror_toml(path: &Path, ignore_rustup: bool) -> Result<bool, MirrorError> {
     if path.join("mirror.toml").exists() {
         return Ok(false);
     }
 
-    let mirror = include_str!("mirror.default.toml");
+    // Read the defautlt toml, edit if required, using toml_edit to keep format
+    let config = include_str!("mirror.default.toml");
+    let mut config = config.parse::<toml_edit::Document>()?;
 
-    fs::write(path.join("mirror.toml"), mirror)?;
+    if ignore_rustup {
+        config["rustup"]["sync"] = toml_edit::value(false);
+    }
+
+    let path = path.join("mirror.toml");
+    let bytes = config.to_string();
+    fs::write(path, bytes)?;
 
     Ok(true)
 }
 
 pub fn load_mirror_toml(path: &Path) -> Result<Config, MirrorError> {
-    Ok(toml::from_str(&fs::read_to_string(
+    Ok(toml_edit::easy::from_str(&fs::read_to_string(
         path.join("mirror.toml"),
     )?)?)
 }
 
-pub fn init(path: &Path) -> Result<(), MirrorError> {
-    create_mirror_directories(path)?;
-    if create_mirror_toml(path)? {
+pub fn init(path: &Path, ignore_rustup: bool) -> Result<(), MirrorError> {
+    create_mirror_directories(path, ignore_rustup)?;
+    if create_mirror_toml(path, ignore_rustup)? {
         eprintln!("Successfully created mirror base at `{}`.", path.display());
     } else {
         eprintln!("Mirror base already exists at `{}`.", path.display());
@@ -141,7 +159,6 @@ pub async fn sync(path: &Path, vendor_path: Option<PathBuf>) -> Result<(), Mirro
     }
 
     // Handle the contact information
-
     let user_agent_str = if let Some(ref contact) = mirror.mirror.contact {
         if contact != "your@email.com" {
             format!("Panamax/{} ({})", env!("CARGO_PKG_VERSION"), contact)
