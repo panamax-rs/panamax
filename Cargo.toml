@@ -38,4 +38,5 @@ walkdir = "2.3"
 
 [features]
 default = []
+dev_reduced_crates = []
 vendored-openssl = ["reqwest/native-tls-vendored"]

@@ -170,6 +170,21 @@ pub async fn sync_crates_files(
                 return true;
             }
 
+            // DEV: if dev_reduced_crates is enabled, only download crates that start with z.
+            // Keep this code in here, because it's helpful for development and debugging.
+            #[cfg(feature = "dev_reduced_crates")]
+            {
+                // Get file name, try-convert to string, check if starts_with z, unwrap, or false if None
+                if !p
+                    .file_name()
+                    .and_then(|x| x.to_str())
+                    .map(|x| x.starts_with('z'))
+                    .unwrap_or(false)
+                {
+                    return true;
+                }
+            }
+
             // Get the data for this crate file
             let oid = df.id();
             if oid.is_zero() {
