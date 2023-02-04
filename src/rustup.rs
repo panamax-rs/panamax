@@ -1,6 +1,7 @@
 use crate::download::{
-    append_to_path, copy_file_create_dir_with_sha256, download, download_with_sha256_file,
-    move_if_exists, move_if_exists_with_sha256, write_file_create_dir, DownloadError,
+    append_to_path, copy_file_create_dir_with_sha256, download, download_string,
+    download_with_sha256_file, move_if_exists, move_if_exists_with_sha256, write_file_create_dir,
+    DownloadError,
 };
 use crate::mirror::{ConfigMirror, ConfigRustup, MirrorError};
 use crate::progress_bar::{current_step_prefix, padded_prefix_message};
@@ -18,91 +19,6 @@ use tokio::task::JoinError;
 
 // The allowed platforms to validate the configuration
 // Note: These platforms should match the list on https://rust-lang.github.io/rustup/installation/other.html
-
-/// Unix platforms
-static PLATFORMS_UNIX: &[&str] = &[
-    "aarch64-fuschia",
-    "aarch64-linux-android",
-    "aarch64-pc-windows-msvc",
-    "aarch64-unknown-hermit",
-    "aarch64-unknown-linux-gnu",
-    "aarch64-unknown-linux-musl",
-    "aarch64-unknown-none",
-    "aarch64-unknown-none-softfloat",
-    "aarch64-unknown-redox",
-    "arm-linux-androideabi",
-    "arm-unknown-linux-gnueabi",
-    "arm-unknown-linux-gnueabihf",
-    "arm-unknown-linux-musleabi",
-    "arm-unknown-linux-musleabihf",
-    "armebv7r-none-eabi",
-    "armebv7r-none-eabihf",
-    "armv5te-unknown-linux-gnueabi",
-    "armv5te-unknown-linux-musleabi",
-    "armv7-apple-ios",
-    "armv7-linux-androideabi",
-    "armv7-unknown-linux-gnueabi",
-    "armv7-unknown-linux-gnueabihf",
-    "armv7-unknown-linux-musleabihf",
-    "armv7s-apple-ios",
-    "asmjs-unknown-emscripten",
-    "i386-apple-ios",
-    "i586-unknown-linux-gnu",
-    "i586-unknown-linux-musl",
-    "i686-apple-darwin",
-    "i686-linux-android",
-    "i686-unknown-freebsd",
-    "i686-unknown-linux-gnu",
-    "i686-unknown-linux-musl",
-    "mips-unknown-linux-gnu",
-    "mips-unknown-linux-musl",
-    "mips64-unknown-linux-gnuabi64",
-    "mips64-unknown-linux-muslabi64",
-    "mips64el-unknown-linux-gnuabi64",
-    "mips64el-unknown-linux-muslabi64",
-    "mipsel-unknown-linux-gnu",
-    "mipsel-unknown-linux-musl",
-    "mipsisa32r6el-unknown-linux-gnu",
-    "mipsisa64r6-unknown-linux-gnuabi64",
-    "mipsisa64r6el-unknown-linux-gnuabi64",
-    "nvptx64-nvidia-cuda",
-    "powerpc-unknown-linux-gnu",
-    "powerpc64-unknown-linux-gnu",
-    "powerpc64le-unknown-linux-gnu",
-    "riscv32gc-unknown-linux-gnu",
-    "riscv32i-unknown-none-elf",
-    "riscv32imac-unknown-none-elf",
-    "riscv32imc-unknown-none-elf",
-    "riscv64gc-unknown-linux-gnu",
-    "riscv64gc-unknown-none-elf",
-    "riscv64imac-unknown-none-elf",
-    "s390x-unknown-linux-gnu",
-    "sparc64-unknown-linux-gnu",
-    "sparcv9-sun-solaris",
-    "thumbv6m-none-eabi",
-    "thumbv7em-none-eabi",
-    "thumbv7em-none-eabihf",
-    "thumbv7m-none-eabi",
-    "thumbv7neon-linux-androideabi",
-    "thumbv7neon-unknown-linux-gnueabihf",
-    "wasm32-unknown-emscripten",
-    "wasm32-unknown-unknown",
-    "wasm32-wasi",
-    "x86_64-apple-darwin",
-    "x86_64-apple-ios",
-    "x86_64-fortanix-unknown-sgx",
-    "x86_64-fuschia",
-    "x86_64-linux-android",
-    "x86_64-pc-solaris",
-    "x86_64-rumprun-netbsd",
-    "x86_64-sun-solaris",
-    "x86_64-unknown-freebsd",
-    "x86_64-unknown-linux-gnu",
-    "x86_64-unknown-linux-gnux32",
-    "x86_64-unknown-linux-musl",
-    "x86_64-unknown-netbsd",
-    "x86_64-unknown-redox",
-];
 
 /// Windows platforms (platforms where rustup-init has a .exe extension)
 static PLATFORMS_WINDOWS: &[&str] = &[
@@ -185,11 +101,42 @@ impl Platforms {
     }
 }
 
-pub fn get_platforms(rustup: &ConfigRustup) -> Result<Platforms, MirrorError> {
-    let unix = match &rustup.platforms_unix {
-        Some(p) => p.clone(),
-        None => PLATFORMS_UNIX.iter().map(|x| x.to_string()).collect(),
-    };
+pub async fn download_platform_list(
+    source: &str,
+    channel: &str,
+) -> Result<Vec<String>, MirrorError> {
+    let channel_url = format!("{source}/dist/channel-rust-{channel}.toml");
+    let user_agent = HeaderValue::from_str(&format!("Panamax/{}", env!("CARGO_PKG_VERSION")))
+        .expect("Hardcoded user agent string should never fail.");
+    let channel_str = download_string(&channel_url, &user_agent).await?;
+    let channel_data: Channel = toml::from_str(&channel_str)?;
+
+    let mut targets = HashSet::new();
+
+    for (_, pkg) in channel_data.pkg {
+        for (target, _) in pkg.target {
+            if target == "*" {
+                continue;
+            }
+            targets.insert(target);
+        }
+    }
+
+    let mut targets: Vec<String> = targets.into_iter().collect();
+    targets.sort();
+
+    Ok(targets)
+}
+
+pub async fn get_platforms(rustup: &ConfigRustup) -> Result<Platforms, MirrorError> {
+    let all = download_platform_list(&rustup.source, "nightly").await?;
+
+    let unix = all
+        .iter()
+        .filter(|x| !PLATFORMS_WINDOWS.contains(&x.as_str()))
+        .map(|x| x.to_string())
+        .collect();
+
     let windows = match &rustup.platforms_windows {
         Some(p) => p.clone(),
         None => PLATFORMS_WINDOWS.iter().map(|x| x.to_string()).collect(),
@@ -702,7 +649,7 @@ pub async fn sync(
     rustup: &ConfigRustup,
     user_agent: &HeaderValue,
 ) -> Result<(), MirrorError> {
-    let platforms = get_platforms(rustup)?;
+    let platforms = get_platforms(rustup).await?;
     // Default to not downloading rustc-dev
     let download_dev = rustup.download_dev.unwrap_or(false);
 
