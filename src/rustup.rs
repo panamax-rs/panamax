@@ -137,11 +137,14 @@ pub async fn download_platform_list(
 pub async fn get_platforms(rustup: &ConfigRustup) -> Result<Platforms, MirrorError> {
     let all = download_platform_list(&rustup.source, "nightly").await?;
 
-    let unix = all
-        .iter()
-        .filter(|x| !PLATFORMS_WINDOWS.contains(&x.as_str()))
-        .map(|x| x.to_string())
-        .collect();
+    let unix = match &rustup.platforms_unix {
+        Some(p) => p.clone(),
+        None => all
+            .iter()
+            .filter(|x| !PLATFORMS_WINDOWS.contains(&x.as_str()))
+            .map(|x| x.to_string())
+            .collect(),
+    };
 
     let windows = match &rustup.platforms_windows {
         Some(p) => p.clone(),
