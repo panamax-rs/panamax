@@ -330,6 +330,7 @@ pub(crate) async fn verify(
     path: PathBuf,
     dry_run: bool,
     assume_yes: bool,
+    vendor_path: Option<PathBuf>,
 ) -> Result<(), MirrorError> {
     if !path.join("mirror.toml").exists() {
         eprintln!(
@@ -363,7 +364,7 @@ pub(crate) async fn verify(
     let mut current_step = 1;
 
     if let Some(mut missing_crates) =
-        verify::verify_mirror(path.clone(), &mut current_step, steps).await?
+        verify::verify_mirror(path.clone(), &mut current_step, steps, vendor_path).await?
     {
         if dry_run || !sync {
             if !sync {

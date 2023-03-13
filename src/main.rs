@@ -106,6 +106,10 @@ enum Panamax {
         /// Ignored if dry-run is supplied.
         #[arg(long)]
         assume_yes: bool,
+
+        /// cargo-vendor directory.
+        #[arg(value_parser)]
+        vendor_path: Option<PathBuf>,
     },
 }
 
@@ -132,7 +136,8 @@ async fn main() {
             path,
             dry_run,
             assume_yes,
-        } => mirror::verify(path, dry_run, assume_yes).await,
+            vendor_path,
+        } => mirror::verify(path, dry_run, assume_yes, vendor_path).await,
     }
     .unwrap_or_else(|e| eprintln!("Panamax command failed! {e}"));
 }
