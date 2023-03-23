@@ -16,7 +16,7 @@ use reqwest::Client;
 use warp::http::HeaderValue;
 
 use crate::{
-    crates::{get_crate_path, sync_one_crate_entry, CrateEntry},
+    crates::{get_crate_path, sync_one_crate_entry, vendor_path_to_vendors, CrateEntry},
     download::DownloadError,
     mirror::{default_user_agent, ConfigCrates, ConfigMirror, MirrorError},
     progress_bar::padded_prefix_message,
@@ -143,6 +143,7 @@ pub(crate) async fn verify_mirror(
     path: std::path::PathBuf,
     current_step: &mut usize,
     steps: usize,
+    vendor_path: Option<PathBuf>,
 ) -> Result<Option<Vec<CrateEntry>>, MirrorError> {
     // Checking existence of local index
     let repo_path = path.join("crates.io-index");
@@ -176,6 +177,9 @@ pub(crate) async fn verify_mirror(
 
     let mut missing_crates = Vec::new();
 
+    // if a vendor_path, parse the filepath for Cargo.toml files for each crate, filling vendors
+    let vendors = vendor_path_to_vendors(vendor_path.as_ref());
+
     diff.foreach(
         &mut |delta, _| {
             let df = delta.new_file();
@@ -203,6 +207,15 @@ pub(crate) async fn verify_mirror(
                         continue;
                     }
                 };
+
+                // Checking if we have a vendor list & the crate is vendored
+                if vendor_path.is_some()
+                    && !vendors
+                        .iter()
+                        .any(|it| it.0 == crate_entry.get_name() && it.1 == crate_entry.get_vers())
+                {
+                    continue;
+                }
 
                 // Building crates local path.
                 let file_path =

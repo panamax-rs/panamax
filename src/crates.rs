@@ -108,25 +108,7 @@ pub async fn sync_crates_files(
     user_agent: &HeaderValue,
 ) -> Result<(), SyncError> {
     // if a vendor_path, parse the filepath for Cargo.toml files for each crate, filling vendors
-    let mut vendors = vec![];
-    if let Some(vendor_path) = &vendor_path {
-        use walkdir::WalkDir;
-        for entry in WalkDir::new(vendor_path.as_path())
-            .min_depth(1)
-            .max_depth(2)
-        {
-            let path = entry.as_ref().unwrap().path();
-            if path.file_name() == Some(OsStr::new("Cargo.toml")) {
-                let s = fs::read_to_string(entry.unwrap().path()).unwrap();
-                let crate_toml = s.parse::<toml_edit::easy::Value>().unwrap();
-                if let toml_edit::easy::Value::Table(crate_f) = crate_toml {
-                    let name = crate_f["package"]["name"].to_string().replace('\"', "");
-                    let version = crate_f["package"]["version"].to_string().replace('\"', "");
-                    vendors.push((name, version));
-                }
-            }
-        }
-    }
+    let vendors = vendor_path_to_vendors(vendor_path.as_ref());
 
     let prefix = padded_prefix_message(2, 3, "Syncing crates files");
 
@@ -379,4 +361,28 @@ pub fn get_crate_path(
             .join(crate_version)
             .join(format!("{crate_name}-{crate_version}.crate")),
     )
+}
+
+pub(crate) fn vendor_path_to_vendors(vendor_path: Option<&PathBuf>) -> Vec<(String, String)> {
+    let mut vendors = vec![];
+    if let Some(vendor_path) = &vendor_path {
+        use walkdir::WalkDir;
+        for entry in WalkDir::new(vendor_path.as_path())
+            .min_depth(1)
+            .max_depth(2)
+        {
+            let path = entry.as_ref().unwrap().path();
+            if path.file_name() == Some(OsStr::new("Cargo.toml")) {
+                let s = fs::read_to_string(entry.unwrap().path()).unwrap();
+                let crate_toml = s.parse::<toml_edit::easy::Value>().unwrap();
+                if let toml_edit::easy::Value::Table(crate_f) = crate_toml {
+                    let name = crate_f["package"]["name"].to_string().replace('\"', "");
+                    let version = crate_f["package"]["version"].to_string().replace('\"', "");
+                    vendors.push((name, version));
+                }
+            }
+        }
+    }
+
+    vendors
 }
