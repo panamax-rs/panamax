@@ -16,7 +16,10 @@ use reqwest::Client;
 use warp::http::HeaderValue;
 
 use crate::{
-    crates::{get_crate_path, sync_one_crate_entry, vendor_path_to_vendors, CrateEntry},
+    crates::{
+        cargo_lock_to_mirror_entries, get_crate_path, sync_one_crate_entry,
+        vendor_path_to_mirror_entries, CrateEntry,
+    },
     download::DownloadError,
     mirror::{default_user_agent, ConfigCrates, ConfigMirror, MirrorError},
     progress_bar::padded_prefix_message,
@@ -144,6 +147,7 @@ pub(crate) async fn verify_mirror(
     current_step: &mut usize,
     steps: usize,
     vendor_path: Option<PathBuf>,
+    cargo_lock_filepath: Option<PathBuf>,
 ) -> Result<Option<Vec<CrateEntry>>, MirrorError> {
     // Checking existence of local index
     let repo_path = path.join("crates.io-index");
@@ -177,8 +181,11 @@ pub(crate) async fn verify_mirror(
 
     let mut missing_crates = Vec::new();
 
+    let is_crate_whitelist_only = vendor_path.is_some() || cargo_lock_filepath.is_some();
     // if a vendor_path, parse the filepath for Cargo.toml files for each crate, filling vendors
-    let vendors = vendor_path_to_vendors(vendor_path.as_ref());
+    let mut mirror_entries = vec![];
+    vendor_path_to_mirror_entries(&mut mirror_entries, vendor_path.as_ref());
+    cargo_lock_to_mirror_entries(&mut mirror_entries, cargo_lock_filepath.as_ref());
 
     diff.foreach(
         &mut |delta, _| {
@@ -208,11 +215,12 @@ pub(crate) async fn verify_mirror(
                     }
                 };
 
-                // Checking if we have a vendor list & the crate is vendored
-                if vendor_path.is_some()
-                    && !vendors
-                        .iter()
-                        .any(|it| it.0 == crate_entry.get_name() && it.1 == crate_entry.get_vers())
+                // Checking only whitelisted crates if supplied
+                if is_crate_whitelist_only
+                    && !mirror_entries.iter().any(|it| {
+                        it.get_name() == crate_entry.get_name()
+                            && it.get_vers() == crate_entry.get_vers()
+                    })
                 {
                     continue;
                 }
@@ -225,7 +233,7 @@ pub(crate) async fn verify_mirror(
                 if !CRATES_403
                     .iter()
                     .any(|it| it.0 == crate_entry.get_name() && it.1 == crate_entry.get_vers())
-                    && !crate_entry.get_yanked()
+                    && !crate_entry.get_yanked().expect("should be set")
                     && !file_path.exists()
                 {
                     missing_crates.push(crate_entry);
