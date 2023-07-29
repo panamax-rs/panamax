@@ -6,7 +6,7 @@ WORKDIR /app
 ADD . /app/
 
 ARG CARGO_BUILD_EXTRA
-RUN cargo build --release $CARGO_BUILD_EXTRA
+RUN cargo build --release $CARGO_BUILD_EXTRA --features vendored-openssl
 
 FROM debian:latest
 
