@@ -157,5 +157,8 @@ async fn main() {
             cargo_lock_filepath,
         } => mirror::verify(path, dry_run, assume_yes, vendor_path, cargo_lock_filepath).await,
     }
-    .unwrap_or_else(|e| eprintln!("Panamax command failed! {e}"));
+    .unwrap_or_else(|e| {
+        eprintln!("Panamax command failed! {e}");
+        std::process::exit(1);
+    });
 }
