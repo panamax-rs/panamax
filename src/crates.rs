@@ -53,10 +53,6 @@ impl CrateEntry {
     pub(crate) fn get_vers(&self) -> &str {
         self.vers.as_str()
     }
-
-    pub(crate) fn get_yanked(&self) -> Option<bool> {
-        self.yanked
-    }
 }
 
 /// Download one single crate file.
