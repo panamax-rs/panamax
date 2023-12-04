@@ -233,7 +233,6 @@ pub(crate) async fn verify_mirror(
                 if !CRATES_403
                     .iter()
                     .any(|it| it.0 == crate_entry.get_name() && it.1 == crate_entry.get_vers())
-                    && !crate_entry.get_yanked().expect("should be set")
                     && !file_path.exists()
                 {
                     missing_crates.push(crate_entry);
