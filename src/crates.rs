@@ -295,6 +295,7 @@ pub async fn sync_crates_files(
 
             Err(e) => {
                 eprintln!("Downloading failed: {e:?}");
+                return Err(SyncError::Download(e));
             }
         }
     }
