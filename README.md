@@ -147,6 +147,8 @@ replace-with = "my-mirror"
 
 `Cargo` should now be pointing to the correct location to use the mirror.
 
+> Note, the `cargo search` command does not currently work with this mirror.
+
 ### Testing configuration
 
 You've now set up a Rust mirror! In order to make sure everything is set up properly, you can run a simple test:
