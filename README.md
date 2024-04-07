@@ -147,7 +147,7 @@ replace-with = "my-mirror"
 
 `Cargo` should now be pointing to the correct location to use the mirror.
 
-> Note, the `cargo search` command does not currently work with this mirror.
+> Note, Panamax does not currently support `cargo search` commands.
 
 ### Testing configuration
 
