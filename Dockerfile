@@ -5,8 +5,8 @@ WORKDIR /app
 #ADD --chown=rust:rust . /app/
 ADD . /app/
 
-ARG CARGO_BUILD_EXTRA
-RUN cargo build --release $CARGO_BUILD_EXTRA
+ARG CARGO_BUILD_EXTRA=" "
+RUN cargo build --release ${CARGO_BUILD_EXTRA}
 
 FROM debian:latest
 
@@ -16,7 +16,7 @@ RUN apt update \
   && apt install -y \
     ca-certificates \
     git \
-    libssl1.1 \
+    libssl3 \
   && git config --global --add safe.directory '*'
 
 ENTRYPOINT [ "/usr/local/bin/panamax" ]
