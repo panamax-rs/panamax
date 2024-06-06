@@ -147,6 +147,8 @@ replace-with = "my-mirror"
 
 `Cargo` should now be pointing to the correct location to use the mirror.
 
+> Note, Panamax does not currently support `cargo search` commands.
+
 ### Testing configuration
 
 You've now set up a Rust mirror! In order to make sure everything is set up properly, you can run a simple test:
